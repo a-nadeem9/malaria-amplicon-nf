@@ -100,9 +100,9 @@ PREFERENCE_KEYS = {
 
 def analysis_runtime_env(root: Path) -> dict[str, str]:
     """Return the managed analysis environment used by R subprocesses."""
-    env = os.environ.copy()
+    env = local_runtime_env(root)
     env["SIMPLSEQ_PROJECT_ROOT"] = str(root)
-    env_dir_raw = env.get("SIMPLSEQ_ENV_DIR", "").strip()
+    env_dir_raw = (env.get("SIMPLSEQ_ENV_DIR") or env.get("CONDA_PREFIX") or "").strip()
     if env_dir_raw:
         env_dir = Path(env_dir_raw)
         env.setdefault("CONDA_PREFIX", str(env_dir))

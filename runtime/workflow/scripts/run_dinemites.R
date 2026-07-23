@@ -505,22 +505,28 @@ if (nrow(qpcr_times) > 0) {
   cat("[DINEMITES/run] Marking", nrow(qpcr_times),
       "PCR-positive visits with missing genotypes...\n")
   dataset_filled <- add_qpcr_times(dataset_filled, qpcr_times = qpcr_times)
-  detected_cores <- suppressWarnings(parallel::detectCores())
-  if (is.na(detected_cores) || detected_cores < 2) {
-    detected_cores <- 2L
+  n_unknown_genotypes <- sum(dataset_filled$present == 2, na.rm = TRUE)
+  if (n_unknown_genotypes > 0) {
+    detected_cores <- suppressWarnings(parallel::detectCores())
+    if (is.na(detected_cores) || detected_cores < 2) {
+      detected_cores <- 2L
+    }
+    n_cores <- max(1L, min(4L, detected_cores - 1L))
+    set.seed(args$seed)
+    cat("[DINEMITES/run] Creating", args$n_imputations,
+        "complete genotype imputations on", n_cores, "cores...\n")
+    imputed_datasets <- impute_dataset(
+      dataset_filled,
+      n_imputations = args$n_imputations,
+      n_cores = n_cores,
+      verbose = TRUE
+    )
+    dataset_filled <- add_probability_present(dataset_filled, imputed_datasets)
+    has_qpcr_imputation <- TRUE
+  } else {
+    cat("[DINEMITES/run] Every PCR-positive visit already has genotype data;",
+        "skipping imputation.\n")
   }
-  n_cores <- max(1L, min(4L, detected_cores - 1L))
-  set.seed(args$seed)
-  cat("[DINEMITES/run] Creating", args$n_imputations,
-      "complete genotype imputations on", n_cores, "cores...\n")
-  imputed_datasets <- impute_dataset(
-    dataset_filled,
-    n_imputations = args$n_imputations,
-    n_cores = n_cores,
-    verbose = TRUE
-  )
-  dataset_filled <- add_probability_present(dataset_filled, imputed_datasets)
-  has_qpcr_imputation <- TRUE
 }
 
 prepare_bayesian_dataset <- function(model_dataset) {

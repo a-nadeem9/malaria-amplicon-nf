@@ -2164,6 +2164,7 @@ function renderStages(events, summary, state) {
 }
 
 function renderStatus(payload) {
+  lastRunStatus = payloadStatus(payload);
   $("#stop-button").hidden = !Boolean(payload.active);
   $("#stop-button").disabled = !Boolean(payload.active);
   updateRunButtonAvailability(Boolean(payload.active));

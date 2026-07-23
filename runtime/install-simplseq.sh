@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${SIMPLSEQ_VERSION:-v1.0.0}"
+VERSION="${SIMPLSEQ_VERSION:-v1.0.1}"
 TARBALL="runtime.tar.gz"
 CHECKSUMS="SHA256SUMS.txt"
 DEFAULT_BASE_URL="https://github.com/a-nadeem9/malaria-amplicon-nf/releases/download/${VERSION}"
@@ -219,6 +219,15 @@ fi
 if [[ -d "$ENV_DIR/bin/cmdstan" ]]; then
   export CMDSTAN="$ENV_DIR/bin/cmdstan"
 fi
+
+# Explicit runtime locks can lag behind environment.yml. Excel metadata is an
+# advertised input format, so enforce its Python dependency before marking the
+# managed runtime ready.
+if ! "$ENV_DIR/bin/python" -c 'import openpyxl' >/dev/null 2>&1; then
+  say "Installing Excel metadata support"
+  "$ENV_DIR/bin/python" -m pip install "openpyxl>=3.1,<4"
+fi
+"$ENV_DIR/bin/python" -c 'import openpyxl'
 
 "$ENV_DIR/bin/python" -m pip install --no-deps --force-reinstall "$STAGED_VERSION_DIR"
 say "Installing downstream R analysis packages"

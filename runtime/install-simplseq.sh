@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${SIMPLSEQ_VERSION:-v1.0.1}"
+VERSION="${SIMPLSEQ_VERSION:-v1.0.2}"
 TARBALL="runtime.tar.gz"
 CHECKSUMS="SHA256SUMS.txt"
 DEFAULT_BASE_URL="https://github.com/a-nadeem9/malaria-amplicon-nf/releases/download/${VERSION}"

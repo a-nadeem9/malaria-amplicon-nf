@@ -16,7 +16,7 @@ use tauri::{
 };
 use tauri_plugin_dialog::DialogExt;
 
-const RUNTIME_VERSION: &str = "v1.0.1";
+const RUNTIME_VERSION: &str = "v1.0.2";
 const DEFAULT_WSL_DISTRO_NAME: &str = "Ubuntu";
 const LEGACY_MANAGED_WSL_DISTRO_NAMES: [&str; 3] = [
     "malaria-amplicon-nf-runtime-v3",

@@ -1,0 +1,23 @@
+{
+  "name": "malaria-amplicon-nf",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 1420 --strictPort",
+    "prepare:desktop-runtime": "node scripts/prepare-desktop-runtime.mjs",
+    "tauri": "tauri",
+    "tauri:dev": "tauri dev",
+    "verify:repo": "node scripts/verify-unified-repo.mjs",
+    "build": "node scripts/prepare-desktop-runtime.mjs && vite build",
+    "tauri:build": "tauri build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.0.0",
+    "esbuild": "^0.28.1",
+    "vite": "^7.3.6"
+  }
+}

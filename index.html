@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>malaria-amplicon-nf</title>
+    <script type="module" src="/src/main.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="brand-lockup" aria-label="malaria-amplicon-nf">
+        <img class="brand-mark" src="/assets/launcher-logo.png" alt="" />
+        <p class="brand-name">malaria-amplicon-nf</p>
+      </header>
+      <section id="loading-view" class="panel app-state">
+        <div class="panel-header">
+          <div>
+            <h1 id="loading-title">Checking runtime...</h1>
+          </div>
+          <span id="runtime-badge" class="runtime-badge" hidden>Loading</span>
+        </div>
+        <div class="progress-summary">
+          <span id="progress-label">Preparing...</span>
+          <span id="progress-percent">0%</span>
+        </div>
+        <div id="launcher-progress" class="launcher-progress" role="progressbar" aria-label="Loading malaria-amplicon-nf" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span></span>
+        </div>
+        <p id="progress-eta" class="progress-eta" aria-live="polite">Estimating time remaining...</p>
+        <p id="loading-detail" class="loading-detail" aria-live="polite">
+          Looking for the local analysis environment...
+        </p>
+        <section class="install-console" aria-label="Installation activity" hidden>
+          <header class="install-console-header">
+            <span class="install-console-dot" aria-hidden="true"></span>
+            <span>Installation activity</span>
+          </header>
+          <pre class="install-console-output" aria-live="polite"></pre>
+        </section>
+        <div class="runtime-line" hidden>
+          <span class="runtime-spinner" aria-hidden="true"></span>
+          <p id="mode-copy">Checking local malaria-amplicon-nf runtime...</p>
+        </div>
+      </section>
+
+      <section id="setup-view" class="panel setup-panel app-state" hidden>
+        <div class="panel-header">
+          <div>
+            <h1 id="setup-title">Runtime setup needs attention</h1>
+          </div>
+          <span id="setup-badge" class="runtime-badge" data-mode="missing">Setup needed</span>
+        </div>
+        <p id="setup-copy" class="setup-copy">
+          malaria-amplicon-nf tried to set up the managed analysis runtime automatically. Use retry if setup was interrupted.
+        </p>
+        <div class="actions">
+          <button id="install" class="primary">Retry Setup</button>
+          <button id="retry">Check Again</button>
+        </div>
+        <div class="status-block">
+          <span class="status-label">Status</span>
+          <pre id="setup-status">Waiting for setup...</pre>
+        </div>
+        <section class="install-console" aria-label="Installation log" hidden>
+          <header class="install-console-header">
+            <span class="install-console-dot" aria-hidden="true"></span>
+            <span>Installation log</span>
+          </header>
+          <pre class="install-console-output" aria-live="polite"></pre>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>

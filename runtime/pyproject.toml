@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "simplseq-nf-app"
+version = "1.0.0"
+description = "GUI-first SIMPLseq malaria amplicon workflow app"
+requires-python = ">=3.11"
+dependencies = [
+  "biopython>=1.83,<2",
+  "flask",
+  "openpyxl>=3.1,<4",
+  "pandas",
+  "waitress>=3.0,<4",
+]
+
+[project.scripts]
+simplseq = "simplseq.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

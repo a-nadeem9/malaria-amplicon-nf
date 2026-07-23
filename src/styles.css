@@ -1,0 +1,362 @@
+:root {
+  color-scheme: light;
+  font-family: Aptos, "Aptos Display", Calibri, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  color: #005c68;
+  background: #ffffff;
+  --ink: #005c68;
+  --muted: #356f75;
+  --panel: #ffffff;
+  --line: #c9dddf;
+  --line-soft: #e4eff0;
+  --teal: #20988c;
+  --teal-dark: #005c68;
+  --accent: #ec1850;
+  --accent-soft: #fff3f6;
+  --status: #ffffff;
+  --wordmark-font: Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #ffffff;
+}
+
+.shell {
+  display: grid;
+  place-content: center;
+  gap: 12px;
+  width: min(500px, calc(100vw - 40px));
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 24px 0;
+}
+
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: min(430px, 100%);
+  margin: 0 auto;
+}
+
+.brand-mark {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  object-fit: contain;
+}
+
+.brand-name {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--wordmark-font);
+  font-size: 31px;
+  font-weight: 500;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: none;
+  padding: 16px 18px 18px;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.app-state {
+  min-height: auto;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+h1 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+p {
+  margin: 0;
+  line-height: 1.5;
+}
+
+.runtime-badge {
+  flex: 0 0 auto;
+  align-self: start;
+  justify-self: start;
+  border: 1px solid rgba(32, 152, 140, 0.32);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--teal);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.runtime-badge[data-mode="missing"] {
+  border-color: rgba(236, 24, 80, 0.34);
+  background: #ffffff;
+  color: var(--accent);
+}
+
+.runtime-badge[data-mode="starting"],
+.runtime-badge[data-mode="running"] {
+  border-color: rgba(0, 92, 104, 0.24);
+  background: var(--ink);
+  color: #ffffff;
+}
+
+.runtime-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.launcher-progress {
+  position: relative;
+  overflow: hidden;
+  height: 7px;
+  border-radius: 999px;
+  background: rgba(0, 92, 104, 0.09);
+}
+
+.launcher-progress span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--progress, 0%);
+  min-width: 0;
+  border-radius: inherit;
+  background: var(--teal);
+  transition: width 900ms cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: width;
+}
+
+.progress-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+#progress-percent {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.progress-eta {
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.loading-detail {
+  min-height: 42px;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.install-console {
+  overflow: hidden;
+  border: 1px solid #17383b;
+  border-radius: 6px;
+  background: #10272a;
+  color: #d8ecea;
+}
+
+.install-console-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 30px;
+  border-bottom: 1px solid rgba(216, 236, 234, 0.14);
+  padding: 0 10px;
+  color: #a8ceca;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.install-console-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #38b6a8;
+  box-shadow: 0 0 0 3px rgba(56, 182, 168, 0.12);
+}
+
+.install-console-output {
+  height: 118px;
+  min-height: 118px;
+  overflow: auto;
+  padding: 9px 10px 11px;
+  color: #d8ecea;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  scrollbar-color: rgba(168, 206, 202, 0.42) transparent;
+}
+
+.runtime-spinner {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid rgba(0, 92, 104, 0.16);
+  border-top-color: var(--teal);
+  border-radius: 50%;
+  animation: spinner-rotate 760ms linear infinite;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 2px;
+}
+
+.setup-copy {
+  max-width: 660px;
+  color: var(--muted);
+  font-size: 17px;
+}
+
+button {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  color: var(--ink);
+  padding: 0 14px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 120ms ease, border-color 120ms ease, box-shadow 120ms ease, background 120ms ease;
+}
+
+button.primary {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--teal);
+  transform: translateY(-1px);
+}
+
+button.primary:hover:not(:disabled) {
+  background: var(--teal-dark);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.status-block {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--status);
+  padding: 11px;
+}
+
+.status-label {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+pre {
+  min-height: 36px;
+  margin: 0;
+  overflow: auto;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  padding: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+@keyframes spinner-rotate {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 640px) {
+  .shell {
+    width: min(100% - 28px, 500px);
+    gap: 12px;
+    padding: 20px 0;
+  }
+
+  .brand-lockup {
+    align-items: center;
+  }
+
+  .brand-mark {
+    width: 38px;
+    height: 38px;
+    flex-basis: 38px;
+  }
+
+  .brand-name {
+    font-size: 25px;
+  }
+
+  .panel {
+    padding: 15px 16px 17px;
+  }
+
+  .panel-header {
+    display: grid;
+    gap: 12px;
+  }
+
+  h1 {
+    font-size: 21px;
+  }
+
+  button {
+    flex: 1 1 160px;
+  }
+
+  .app-state {
+    min-height: auto;
+  }
+}

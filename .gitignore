@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+target/
+src-tauri/target/
+__pycache__/
+.pytest_cache/
+.venv*/
+.nextflow/
+*.py[cod]
+
+# Build outputs
+dist/
+src-tauri/gen/
+src-tauri/resources/runtime/*
+!src-tauri/resources/runtime/.gitkeep
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+
+# Local state
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+

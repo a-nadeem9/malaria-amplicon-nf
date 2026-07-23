@@ -1,0 +1,36 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "malaria-amplicon-nf",
+  "version": "1.0.0",
+  "identifier": "org.malariaamplicon.nf",
+  "build": {
+    "beforeDevCommand": "node node_modules/vite/bin/vite.js --host 127.0.0.1 --port 1420 --strictPort",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "node scripts/prepare-desktop-runtime.mjs && node node_modules/vite/bin/vite.js build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "malaria-amplicon-nf",
+        "width": 680,
+        "height": 430,
+        "minWidth": 560,
+        "minHeight": 380,
+        "theme": "Light"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "resources": ["resources/runtime/"],
+    "macOS": {
+      "signingIdentity": "-"
+    }
+  }
+}

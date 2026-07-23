@@ -1,0 +1,992 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>malaria-amplicon-nf</title>
+    <link rel="icon" href="/assets/logo.png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}?v={{ asset_version }}">
+  </head>
+  <body>
+    <header class="app-header">
+      <div class="brand">
+        <img class="brand-logo" src="/assets/logo.png" alt="" aria-hidden="true">
+        <div class="wordmark" aria-label="malaria-amplicon-nf">
+          malaria-amplicon-nf
+        </div>
+      </div>
+      <nav class="tabs" aria-label="Main sections">
+        <button class="tab is-active" data-tab="inputs" aria-current="step"><span class="step-number">1</span>Configuration</button>
+        <button class="tab" data-tab="run"><span class="step-number">2</span>Run</button>
+        <button class="tab" data-tab="results"><span class="step-number">3</span>Results</button>
+        <button class="tab" data-tab="analysis"><span class="step-number">4</span>Downstream analysis</button>
+      </nav>
+      <div class="nav-actions">
+        <div class="pipeline-status" aria-live="polite" hidden>
+          <span id="pipeline-label">Running</span>
+          <strong id="pipeline-percent">0%</strong>
+        </div>
+        <button class="app-help-button" type="button" aria-label="Quick start" aria-controls="app-help-popover" aria-expanded="false">?</button>
+        <div id="app-help-popover" class="app-help-popover" role="dialog" aria-label="Quick start" hidden>
+          <strong>Quick start</strong>
+          <span>Choose a FASTQ folder, run the pipeline, review Results, then prepare downstream analyses. Need more? See the <a href="https://github.com/a-nadeem9/malaria-amplicon-nf#readme" target="_blank" rel="noreferrer">docs</a>.</span>
+        </div>
+      </div>
+    </header>
+    <div class="global-progress" aria-hidden="true">
+      <span id="global-progress-fill"></span>
+    </div>
+
+    <main class="app-shell">
+      <nav id="downstream-subtabs" class="downstream-subtabs" aria-label="Downstream analysis workflow" hidden>
+        <p class="downstream-nav-label">Downstream analysis</p>
+        <div class="downstream-nav-flow">
+          <button class="downstream-subtab is-active" data-downstream-tab="qc">
+            <span class="downstream-nav-marker" aria-hidden="true"></span>
+            <span class="downstream-nav-copy">
+              <strong>Quality control</strong>
+              <small>Confirm the shared allele input</small>
+            </span>
+          </button>
+          <button class="downstream-subtab" data-downstream-tab="dinemites">
+            <span class="downstream-nav-marker" aria-hidden="true"></span>
+            <span class="downstream-nav-copy">
+              <strong>DINEMITES</strong>
+              <small>Longitudinal infection analysis</small>
+            </span>
+          </button>
+          <button class="downstream-subtab" data-downstream-tab="dcifer">
+            <span class="downstream-nav-marker" aria-hidden="true"></span>
+            <span class="downstream-nav-copy">
+              <strong>Dcifer</strong>
+              <small>Genetic relatedness analysis</small>
+            </span>
+          </button>
+        </div>
+      </nav>
+
+      <section id="tab-inputs" class="tab-panel is-active">
+        <header class="workspace-heading">
+          <div>
+            <h1>Prepare sequencing data</h1>
+            <p>Choose paired FASTQ files, review how sample identifiers were parsed, then continue to the run setup.</p>
+          </div>
+        </header>
+
+        <div class="configuration-workbench">
+          <section class="workbench-section source-workspace">
+            <div class="section-content">
+              <div class="section-heading">
+                <div>
+                  <h2>Data source</h2>
+                  <p>Select the folder containing paired R1 and R2 FASTQ files.</p>
+                </div>
+              </div>
+
+              <label for="fastq-dir">FASTQ folder</label>
+              <div class="input-row input-row--prominent">
+                <input id="fastq-dir" type="text" placeholder="Choose a folder containing paired FASTQ files" autocomplete="off">
+                <button id="browse-button" title="Choose a FASTQ folder">Choose folder</button>
+              </div>
+              <p id="folder-message" class="field-help">No folder selected yet.</p>
+
+              <div id="common-paths" class="quick-paths" aria-label="Common paths" hidden></div>
+
+              <details class="metadata-options metadata-workspace">
+                <summary>
+                  <span>Longitudinal metadata</span>
+                  <small>Optional, recommended</small>
+                </summary>
+                <div class="details-content">
+                  <div class="metadata-purpose">
+                    <div>
+                      <p class="eyebrow">Complete visit calendar</p>
+                      <h3>Describe how this study records visits</h3>
+                    </div>
+                    <p>Metadata adds visits that have no retained genotype. Sequence processing still works without it, but longitudinal analysis can only distinguish observed absence from missing genotype when a detection result is supplied.</p>
+                  </div>
+
+                  <div class="metadata-requirements" aria-label="Metadata requirements">
+                    <div>
+                      <strong>Participant</strong>
+                      <span>An ID shared with the sample names</span>
+                      <em>Required</em>
+                    </div>
+                    <div>
+                      <strong>Visit timing</strong>
+                      <span>A complete date, or a visit month with date defaults</span>
+                      <em>Required</em>
+                    </div>
+                    <div>
+                      <strong>Detection result</strong>
+                      <span>PCR or qPCR positive/negative state</span>
+                      <em>For a complete calendar</em>
+                    </div>
+                  </div>
+
+                  <div class="metadata-file-heading">
+                    <label for="metadata-path">Metadata file</label>
+                    <a class="metadata-template-link" href="/api/metadata/template" download>Download CSV header</a>
+                  </div>
+                  <div class="input-row">
+                    <input id="metadata-path" type="text" placeholder="No metadata file selected" autocomplete="off">
+                    <button id="choose-metadata-file" type="button" title="Choose an optional metadata file">Choose file</button>
+                  </div>
+                  <p id="metadata-path-help" class="field-help">CSV, TSV, XLSX, or XLSM. Leave blank for a sequencing-only run.</p>
+
+                  <div class="metadata-field-grid">
+                    <div>
+                      <label for="metadata-sheet">Worksheet</label>
+                      <select id="metadata-sheet" class="scientific-select" disabled>
+                        <option value="">Selected automatically</option>
+                      </select>
+                      <p class="field-help">The table inside an Excel workbook. CSV and TSV files have no worksheets.</p>
+                    </div>
+                    <div>
+                      <label for="metadata-date-order">Date format</label>
+                      <select id="metadata-date-order" class="scientific-select">
+                        <option value="auto" selected>Automatic (recommended)</option>
+                        <option value="dmy">Day first (31/12/2022)</option>
+                        <option value="mdy">Month first (12/31/2022)</option>
+                      </select>
+                      <p class="field-help">Only needed when a numeric date could be read in two ways.</p>
+                    </div>
+                  </div>
+
+                  <section id="metadata-contract" class="metadata-contract" hidden aria-live="polite">
+                    <header class="metadata-contract__heading">
+                      <div>
+                        <p class="eyebrow">Metadata contract</p>
+                        <h3>Match your columns</h3>
+                      </div>
+                      <span id="metadata-contract-status" class="metadata-contract__status">Needs review</span>
+                    </header>
+
+                    <div class="metadata-contract__required">
+                      <div class="metadata-map-field">
+                        <label for="metadata-column-participant">Participant ID <span>Required</span></label>
+                        <select id="metadata-column-participant" data-metadata-column="participant_id"></select>
+                      </div>
+                      <div class="metadata-map-field">
+                        <label for="metadata-column-date">Visit date</label>
+                        <select id="metadata-column-date" data-metadata-column="collection_date"></select>
+                      </div>
+                      <div class="metadata-map-field">
+                        <label for="metadata-column-month">Visit month</label>
+                        <select id="metadata-column-month" data-metadata-column="month"></select>
+                      </div>
+                      <div class="metadata-map-field">
+                        <label for="metadata-column-pcr">PCR or qPCR result</label>
+                        <select id="metadata-column-pcr" data-metadata-column="metadata_pcr"></select>
+                      </div>
+                    </div>
+                    <p class="metadata-contract__rule">Map Participant ID and either Visit date or Visit month. A PCR/qPCR result is needed for a complete longitudinal calendar.</p>
+
+                    <details class="metadata-covariates">
+                      <summary>Optional study fields</summary>
+                      <div class="metadata-contract__optional">
+                        <div class="metadata-map-field">
+                          <label for="metadata-column-season">Season</label>
+                          <select id="metadata-column-season" data-metadata-column="metadata_season"></select>
+                        </div>
+                        <div class="metadata-map-field">
+                          <label for="metadata-column-status">Visit or clinical status</label>
+                          <select id="metadata-column-status" data-metadata-column="metadata_status"></select>
+                        </div>
+                        <div class="metadata-map-field">
+                          <label for="metadata-column-age">Age</label>
+                          <select id="metadata-column-age" data-metadata-column="metadata_age"></select>
+                        </div>
+                        <div class="metadata-map-field">
+                          <label for="metadata-column-gender">Sex or gender</label>
+                          <select id="metadata-column-gender" data-metadata-column="metadata_gender"></select>
+                        </div>
+                      </div>
+                      <div id="metadata-status-contract" class="metadata-status-contract" hidden>
+                        <div class="metadata-contract__subheading">
+                          <div>
+                            <h4>Exclude non-visit rows</h4>
+                            <p>Mark status values that describe administration, enrollment, or another row that is not a biological visit.</p>
+                          </div>
+                        </div>
+                        <div id="metadata-status-values" class="metadata-status-values"></div>
+                      </div>
+                    </details>
+
+                    <div id="metadata-detection-contract" class="metadata-detection-contract" hidden>
+                      <div class="metadata-contract__subheading">
+                        <div>
+                          <h4>Interpret detection values</h4>
+                          <p>Confirm what every value in the selected PCR/qPCR column means.</p>
+                        </div>
+                      </div>
+                      <div id="metadata-detection-values" class="metadata-detection-values"></div>
+                    </div>
+
+                    <div id="metadata-calendar-preview" class="metadata-calendar-preview"></div>
+                    <div id="metadata-inspection" class="metadata-inspection" hidden></div>
+                  </section>
+
+                  <details class="metadata-date-fallbacks">
+                    <summary>Month-only date defaults</summary>
+                    <div class="advanced-grid date-defaults">
+                      <div class="advanced-field">
+                        <label for="fallback-collection-year">Fallback year</label>
+                        <input id="fallback-collection-year" type="number" min="1900" max="2099" step="1" placeholder="Optional" autocomplete="off">
+                      </div>
+                      <div class="advanced-field">
+                        <label for="fallback-collection-day">Fallback day</label>
+                        <input id="fallback-collection-day" type="number" min="1" max="31" step="1" value="27" autocomplete="off">
+                      </div>
+                    </div>
+                    <p class="field-help">Used only when a visit provides a month but not a complete date. Inferred components are recorded in the run audit.</p>
+                  </details>
+                </div>
+              </details>
+
+              <details class="metadata-options kelt-options">
+                <summary>
+                  <span>KELT contamination QC</span>
+                  <small>SIMPLseq only</small>
+                </summary>
+                <div class="details-content">
+                  <p class="field-help metadata-options__intro">Use this only when PCR1 added well-specific inline barcodes to the KELT sentinel locus. Leave it blank for AMA1-only or other unbarcoded libraries.</p>
+
+                  <label for="kelt-barcode-map">Expected barcode map</label>
+                  <div class="input-row">
+                    <input id="kelt-barcode-map" type="text" placeholder="No KELT barcode map selected" autocomplete="off">
+                    <button id="choose-kelt-barcode-map" type="button" title="Choose the expected KELT barcode map">Choose file</button>
+                  </div>
+                  <p id="kelt-barcode-help" class="field-help">CSV or TSV with sample_id, forward_barcode, and reverse_barcode columns. Selecting a map enables exact barcode-pair matching.</p>
+                  <div id="kelt-barcode-inspection" class="metadata-inspection" hidden aria-live="polite"></div>
+                </div>
+              </details>
+
+              <div class="section-action">
+                <button id="scan-button" class="primary">Scan folder</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="scan-review-section" class="workbench-section scan-workspace" aria-labelledby="scan-review-title" tabindex="-1">
+            <div class="section-content">
+              <div class="section-heading">
+                <div>
+                  <h2 id="scan-review-title">Scan review</h2>
+                  <p>Pairing, identifier parsing, dates, and metadata matching.</p>
+                </div>
+                <span id="scan-status" class="status-meta" hidden>No scan yet</span>
+              </div>
+
+              <div class="metrics scan-metrics">
+                <div><span>Paired libraries</span><strong id="metric-pairs">0</strong></div>
+                <div><span>Participants</span><strong id="metric-participants">0</strong></div>
+                <div><span>Data size</span><strong id="metric-size">0 B</strong></div>
+                <div><span>Unpaired files</span><strong id="metric-missing">0</strong></div>
+              </div>
+
+              <div id="scan-readiness" class="scan-readiness" hidden></div>
+
+              <details id="scan-review-details" class="scan-review-details" hidden>
+                <summary>
+                  <span>Review notes</span>
+                  <small id="scan-review-count"></small>
+                </summary>
+                <div id="scan-warnings" class="notice-list"></div>
+              </details>
+
+              <div id="scan-table-tools" class="data-table-toolbar" hidden>
+                <div id="sample-status-summary" class="sample-status-summary" role="group" aria-label="Filter samples by assessment">
+                  <button type="button" class="scan-filter is-active" data-scan-filter="all" aria-pressed="true">All <span id="status-all-count">0</span></button>
+                  <button type="button" class="scan-filter" data-scan-filter="ready" aria-pressed="false"><i class="status-dot is-ready" aria-hidden="true"></i>Ready <span id="status-ready-count">0</span></button>
+                  <button type="button" class="scan-filter" data-scan-filter="review" aria-pressed="false"><i class="status-dot is-review" aria-hidden="true"></i>Review <span id="status-review-count">0</span></button>
+                  <button type="button" class="scan-filter" data-scan-filter="excluded" aria-pressed="false"><i class="status-dot is-excluded" aria-hidden="true"></i>Excluded <span id="status-excluded-count">0</span></button>
+                </div>
+                <div class="scan-table-controls">
+                  <label for="scan-library-filter" class="visually-hidden">Filter by sequencing library</label>
+                  <select id="scan-library-filter" aria-label="Filter by sequencing library" disabled>
+                    <option value="all">All libraries</option>
+                  </select>
+                  <div class="scan-search">
+                  <label for="scan-search" class="visually-hidden">Search scanned samples</label>
+                  <input id="scan-search" type="search" placeholder="Search sample or participant" autocomplete="off">
+                  </div>
+                </div>
+              </div>
+
+              <div class="table-wrap scan-preview-wrap">
+                <table class="scan-review-table" aria-label="Scanned sample review" aria-describedby="scan-page-status">
+                  <thead>
+                    <tr>
+                      <th>Sample</th>
+                      <th>Participant</th>
+                      <th>Library</th>
+                      <th>Collection date</th>
+                      <th>Replicate</th>
+                      <th>Assessment</th>
+                    </tr>
+                  </thead>
+                  <tbody id="scan-preview">
+                    <tr><td colspan="6" class="empty">Scan a folder to review parsed samples.</td></tr>
+                  </tbody>
+                </table>
+              </div>
+              <nav id="scan-pagination" class="table-pagination" aria-label="Scanned sample pages" hidden>
+                <span id="scan-page-status" aria-live="polite">0 samples</span>
+                <div class="table-pagination__controls">
+                  <button id="scan-page-prev" type="button" class="pagination-button" aria-label="Previous sample page" title="Previous page">&larr;</button>
+                  <span id="scan-page-number">Page 1 of 1</span>
+                  <button id="scan-page-next" type="button" class="pagination-button" aria-label="Next sample page" title="Next page">&rarr;</button>
+                </div>
+              </nav>
+            </div>
+          </section>
+        </div>
+
+        <details id="sample-validation-panel" class="records-disclosure" hidden>
+          <summary>
+            <span>
+              <strong id="sample-sheet-title">Generated sample records</strong>
+              <small>Technical FASTQ paths and parsed values</small>
+            </span>
+            <span id="sample-sheet-status" class="status-meta" hidden>No preview</span>
+          </summary>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>sample_id</th>
+                  <th>fastq_1</th>
+                  <th>fastq_2</th>
+                  <th>participant_id</th>
+                  <th>collection_date</th>
+                  <th>status</th>
+                </tr>
+              </thead>
+              <tbody id="sample-preview">
+                <tr><td colspan="6" class="empty">Scan a FASTQ folder to preview rows.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
+
+        <footer class="workflow-action">
+          <div class="workflow-action__copy">
+            <strong>Next: run setup</strong>
+            <span>The sample sheet is created automatically inside the run folder.</span>
+          </div>
+          <button id="proceed-run-button" class="primary" type="button" disabled title="Scan a FASTQ folder successfully first.">
+            <span>Continue to Run</span>
+            <span class="workflow-action__arrow" aria-hidden="true">&rarr;</span>
+          </button>
+        </footer>
+      </section>
+
+      <section id="tab-run" class="tab-panel">
+        <header class="workspace-heading">
+          <div>
+            <p class="eyebrow">Workflow execution</p>
+            <h1>Configure and run</h1>
+            <p>Choose where this run will be stored, then follow each pipeline stage as it completes.</p>
+          </div>
+        </header>
+        <div class="two-column run-layout">
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Run</p>
+                <h2>Launch workflow</h2>
+              </div>
+            </div>
+
+            <label for="run-library-trigger">Sequencing libraries</label>
+            <div id="run-library-picker" class="library-picker is-disabled">
+              <button id="run-library-trigger" class="library-picker__trigger" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="run-library-options" disabled>
+                <span id="run-library-summary">Scan FASTQs to detect libraries</span>
+                <span class="select-chevron" aria-hidden="true"></span>
+              </button>
+              <div id="run-library-options" class="library-picker__options" role="group" aria-label="Libraries to include" hidden></div>
+            </div>
+            <p id="run-library-help" class="field-help">Select one library, several libraries, or all detected libraries.</p>
+
+            <label for="outdir">Output folder</label>
+            <div class="input-row">
+              <input id="outdir" type="text" placeholder="Choose where run folders will be saved" autocomplete="off">
+              <button id="choose-outdir-button" title="Choose an output folder">Choose folder</button>
+            </div>
+            <p id="outdir-help" class="field-help">A run folder is created here. The generated sample sheet and workflow outputs stay together.</p>
+
+            <label for="run-name">Run name</label>
+            <input id="run-name" type="text" placeholder="Auto-generated if empty" autocomplete="off">
+            <p id="run-name-help" class="field-help">Optional. Leave blank for a timestamped run folder.</p>
+
+            <input id="run-samples" type="hidden" value="samples.csv">
+
+            <input id="resume-run" type="checkbox" hidden>
+            <input id="dry-run" type="checkbox" hidden>
+
+            <details class="runtime-options">
+              <summary>Advanced runtime options</summary>
+              <div class="advanced-grid">
+                <div class="advanced-field">
+                  <label for="cpus">CPUs</label>
+                  <input id="cpus" type="number" min="0" step="1" value="4">
+                </div>
+                <div class="advanced-field">
+                  <label for="memory">Memory</label>
+                  <input id="memory" type="text" value="12 GB">
+                </div>
+              </div>
+            </details>
+
+            <div class="button-row run-action-row">
+              <button id="run-button" class="primary">Start run</button>
+              <button id="stop-button" class="danger" type="button" hidden>Stop run</button>
+            </div>
+            <p id="run-readiness" class="field-help">Scan a FASTQ folder and choose an output folder to begin.</p>
+
+            <div id="run-message" class="inline-message"></div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Progress</p>
+                <h2 id="current-stage">No active run</h2>
+              </div>
+            </div>
+
+            <div class="progress-meta">
+              <span id="progress-caption">Waiting to start</span>
+              <strong id="progress-percent" hidden>0%</strong>
+            </div>
+            <div class="progress-bar" role="progressbar" aria-label="Run progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+              <span id="progress-fill"></span>
+            </div>
+            <div id="run-failure-summary" class="run-failure-summary" hidden>
+              <strong>Run stopped</strong>
+              <span id="run-failure-detail">Open the technical log for details.</span>
+              <button id="show-run-log" type="button">Show technical log</button>
+            </div>
+            <ol id="stage-list" class="stage-list"></ol>
+          </section>
+        </div>
+
+        <details id="technical-log-details" class="panel terminal-disclosure">
+          <summary>
+            <span>Technical log</span>
+            <span class="summary-hint">Live workflow output</span>
+          </summary>
+          <div class="terminal-panel">
+            <div class="terminal-heading">
+              <p class="eyebrow">Workflow messages</p>
+            </div>
+            <pre id="technical-log">&gt; Waiting for run.
+&gt; Live progress appears here while malaria-amplicon-nf is active.</pre>
+          </div>
+        </details>
+      </section>
+
+      <section id="tab-results" class="tab-panel">
+        <header class="workspace-heading">
+          <div>
+            <h1>Results</h1>
+            <p>Review the key run statistics, quality summaries, and final workflow tables.</p>
+          </div>
+        </header>
+        <section class="panel results-panel">
+          <div class="results-toolbar">
+            <div class="results-run-control">
+              <div class="results-run-summary">
+                <p class="eyebrow">Saved to</p>
+                <h3 id="results-run-name">No run selected</h3>
+              </div>
+              <div class="results-run-actions">
+                <button id="open-results-folder" type="button" disabled hidden>Open folder</button>
+              </div>
+              <input id="results-outdir" type="hidden" value="">
+            </div>
+          </div>
+          <div id="results-list" class="results-list"></div>
+        </section>
+      </section>
+
+      <section id="tab-qc" class="tab-panel">
+        <header class="workspace-heading qc-page-heading">
+          <div>
+            <h1>Quality control</h1>
+            <p>Review what passed the pipeline, then define the allele table used by both analyses.</p>
+          </div>
+        </header>
+
+        <section id="qc-empty-state" class="qc-empty-state">
+          <div>
+            <h2>No completed run selected</h2>
+            <p>Quality-control files will be available after the workflow finishes.</p>
+          </div>
+          <button id="qc-open-run-files" type="button">Run files</button>
+        </section>
+
+        <div id="qc-workspace" class="qc-workspace qc-guided-workflow" hidden>
+          <div class="qc-guide-stage">
+            <span class="qc-guide-marker" aria-hidden="true"></span>
+            <strong>Review</strong>
+          </div>
+          <section class="qc-section qc-guided-body qc-pipeline-section">
+            <div class="qc-section-heading">
+              <div>
+                <p class="eyebrow">Read-only workflow output</p>
+                <h2>What passed QC?</h2>
+                <p>Inspect filtering and clustering already completed by the pipeline.</p>
+              </div>
+            </div>
+            <div class="qc-results-panel">
+              <div id="qc-results-list" class="results-list"></div>
+            </div>
+          </section>
+
+          <div class="qc-guide-stage">
+            <span class="qc-guide-marker" aria-hidden="true"></span>
+            <strong>Define</strong>
+          </div>
+          <section class="analysis-input-panel qc-section qc-guided-body qc-define-stage">
+            <div class="qc-section-heading qc-section-heading--shared">
+              <div>
+                <p class="eyebrow">Shared filtering rules</p>
+                <h2>Filter participant visits</h2>
+                <p>These settings are applied consistently before either downstream analysis.</p>
+              </div>
+            </div>
+
+            <div class="analysis-preparation-flow" aria-label="Analysis table preparation order">
+              <span>Sequence-QC alleles</span><i aria-hidden="true"></i>
+              <span>Filter each technical replicate</span><i aria-hidden="true"></i>
+              <span>Keep shared alleles</span><i aria-hidden="true"></i>
+              <span>Merge confirmed counts</span><i aria-hidden="true"></i>
+              <span>Require 100 locus reads</span><i aria-hidden="true"></i>
+              <span>Keep recurrent or major haplotypes</span>
+            </div>
+
+            <div class="analysis-filter-block">
+              <div class="analysis-exclusion-note">
+                <strong>Controls stay in run QC only.</strong>
+                <span>Positive controls, negative controls, and rows without a participant/date are excluded from this table and from CD-HIT clustering.</span>
+              </div>
+              <div class="analysis-input-grid">
+                <div class="analysis-field">
+                  <div class="param-label">
+                    <label for="analysis-min-abundance-pct">Keep alleles at or above</label>
+                    <button type="button" class="param-help" aria-label="About minimum allele abundance" data-tooltip="Apply this cutoff separately within every technical replicate. Only alleles that pass in every replicate are retained and merged. SIMPLseq default: 1%.">?</button>
+                  </div>
+                  <div class="input-with-unit">
+                    <input id="analysis-min-abundance-pct" type="number" min="0" max="100" step="0.01" value="1">
+                    <span>%</span>
+                  </div>
+                </div>
+                <div class="analysis-field">
+                  <div class="param-label">
+                    <label for="analysis-abundance-denominator">Abundance denominator</label>
+                    <button type="button" class="param-help" aria-label="About allele abundance denominator" data-tooltip="The cutoff is checked separately in every technical replicate. Same locus compares an allele with reads from its locus; whole sample compares it with all reads across every locus. Same locus is recommended when locus depths differ.">?</button>
+                  </div>
+                  <select id="analysis-abundance-denominator" class="scientific-select">
+                    <option value="locus" selected>Reads at the same locus</option>
+                    <option value="sample">All reads in the sample</option>
+                  </select>
+                </div>
+              </div>
+              <p id="analysis-filter-summary" class="analysis-filter-summary">Keep alleles that pass 1% in every technical replicate, merge their counts, then require at least 100 reads at the merged locus.</p>
+              <p class="analysis-fixed-rule">Across the cohort, a passing haplotype is retained when it occurs in at least two biological samples or is the major haplotype in at least one sample.</p>
+            </div>
+          </section>
+
+          <div class="qc-guide-stage">
+            <span class="qc-guide-marker" aria-hidden="true"></span>
+            <strong>Choose</strong>
+          </div>
+          <section class="analysis-input-panel qc-section qc-guided-body qc-choice-stage">
+            <div class="qc-section-heading qc-section-heading--shared">
+              <div>
+                <p class="eyebrow">Analysis input</p>
+                <h2>Choose an allele definition</h2>
+                <p>DINEMITES and Dcifer will use the same prepared input for that comparison.</p>
+              </div>
+            </div>
+            <div class="analysis-input-options" aria-label="Available analysis inputs">
+              <section class="analysis-option analysis-option--primary">
+                <header class="analysis-option-heading">
+                  <label class="analysis-option-selector" for="analysis-choice-primary">
+                    <input id="analysis-choice-primary" class="analysis-option-radio" type="radio" name="analysis-input-choice" value="off" checked>
+                    <span>
+                      <span class="eyebrow">Standard analysis</span>
+                      <strong>Exact CIGAR alleles</strong>
+                    </span>
+                  </label>
+                  <span id="analysis-primary-status" class="analysis-input-state">Not prepared</span>
+                </header>
+                <p class="analysis-option-copy">Use every exact allele definition produced by the pipeline. This is the recommended input for the main analysis.</p>
+                <div class="analysis-input-actions">
+                  <div class="button-row analysis-table-actions">
+                    <button id="analysis-build-primary" class="primary" type="button">Prepare exact-allele input</button>
+                    <button id="analysis-view-primary" type="button" disabled hidden>View table</button>
+                    <button id="analysis-download-primary" type="button" disabled hidden>Save copy</button>
+                  </div>
+                  <div id="analysis-primary-launch-actions" class="analysis-launch-actions" hidden>
+                    <span>Analyze with</span>
+                    <div class="button-row">
+                      <button id="qc-continue-dinemites" type="button" hidden>DINEMITES</button>
+                      <button id="qc-continue-dcifer" type="button" hidden>Dcifer</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="analysis-option analysis-option--sensitivity">
+                <header class="analysis-option-heading">
+                  <label class="analysis-option-selector" for="analysis-choice-cdhit">
+                    <input id="analysis-choice-cdhit" class="analysis-option-radio" type="radio" name="analysis-input-choice" value="summed">
+                    <span>
+                      <span class="eyebrow">Optional sensitivity comparison</span>
+                      <strong>CD-HIT 98.9% clusters</strong>
+                    </span>
+                  </label>
+                  <span id="analysis-cdhit-status" class="analysis-input-state">Not prepared</span>
+                </header>
+                <p class="analysis-option-copy">Use broader allele groups to check whether clustering changes the biological interpretation. Primary results remain separate.</p>
+                <p class="analysis-option-note"><strong>Uses existing clusters.</strong> CD-HIT is not run again.</p>
+                <div class="analysis-input-actions">
+                  <div class="button-row analysis-table-actions">
+                     <button id="analysis-build-table" type="button">Prepare CD-HIT input</button>
+                    <button id="analysis-view-table" type="button" disabled hidden>View table</button>
+                    <button id="analysis-download-table" type="button" disabled hidden>Save copy</button>
+                  </div>
+                  <div id="analysis-cdhit-launch-actions" class="analysis-launch-actions" hidden>
+                    <span>Analyze with</span>
+                    <div class="button-row">
+                      <button id="analysis-open-cdhit-dinemites" type="button" disabled hidden>DINEMITES</button>
+                      <button id="analysis-open-cdhit-dcifer" type="button" disabled hidden>Dcifer</button>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+            </div>
+            <div id="analysis-input-message" class="inline-message"></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="tab-dinemites" class="tab-panel">
+        <div class="analysis-layout">
+          <section id="dinemites-card" class="panel dinemites-card">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Longitudinal genotyping analysis</p>
+                <h2>DINEMITES</h2>
+              </div>
+            </div>
+
+            <div class="dinemites-config">
+              <p class="results-copy">Run DINEMITES on exact alleles by default, or deliberately compare the optional CD-HIT sensitivity input.</p>
+              <div id="dinemites-readiness" class="analysis-readiness" aria-live="polite"></div>
+
+              <input id="dinemites-enable" type="checkbox" checked hidden>
+
+              <div id="dinemites-controls" class="dinemites-controls">
+                <div class="analysis-mode-control">
+                  <label for="dinemites-analysis-mode">Analysis input</label>
+                  <select id="dinemites-analysis-mode" class="scientific-select">
+                    <option value="off" selected>Primary - exact CIGAR alleles</option>
+                    <option value="summed" disabled>Sensitivity - CD-HIT 98.9% clusters</option>
+                  </select>
+                  <p id="dinemites-analysis-mode-note">Primary results are saved in the DINEMITES folder.</p>
+                </div>
+                <div class="param-label model-type-label">
+                  <label for="dinemites-model">Inference model</label>
+                  <button type="button" class="param-help" aria-label="About DINEMITES model type" data-tooltip="Choose how DINEMITES estimates persistent vs new infection events. Simple is fastest; clustering and Bayesian use the Stan runtime.">?</button>
+                </div>
+                <select id="dinemites-model" class="dinemites-select visually-hidden" aria-hidden="true" tabindex="-1">
+                  <option value="simple" selected>Simple</option>
+                  <option value="clustering">Clustering</option>
+                  <option value="bayesian">Bayesian</option>
+                </select>
+                <div class="model-selector" role="group" aria-label="DINEMITES inference model">
+                  <button type="button" class="model-option is-active" data-dinemites-model="simple">
+                    <strong>Simple</strong><span>Deterministic, fast</span>
+                  </button>
+                  <button type="button" class="model-option" data-dinemites-model="clustering">
+                    <strong>Clustering</strong><span>Pattern-based</span>
+                  </button>
+                  <button type="button" class="model-option" data-dinemites-model="bayesian">
+                    <strong>Bayesian</strong><span>Full uncertainty</span>
+                  </button>
+                </div>
+                <p id="dinemites-model-note" class="analysis-note">Uses the previous three visits by default. Best for a quick, reproducible first pass.</p>
+
+                <details class="dinemites-advanced">
+                  <summary>Advanced settings</summary>
+                  <div class="dinemites-settings-grid">
+                    <div class="param-label">
+                      <label for="dinemites-seed">Random seed</label>
+                      <button type="button" class="param-help" aria-label="About DINEMITES random seed" data-tooltip="Controls reproducibility for stochastic clustering/Bayesian runs. Changing it can slightly change stochastic model output.">?</button>
+                    </div>
+                    <input id="dinemites-seed" type="number" min="1" step="1" value="1">
+                    <div class="param-label">
+                      <label for="dinemites-refresh-interval">Progress refresh</label>
+                      <button type="button" class="param-help" aria-label="About DINEMITES progress refresh" data-tooltip="How often the DINEMITES R script reports progress while running. It does not change the model result.">?</button>
+                    </div>
+                    <input id="dinemites-refresh-interval" type="number" min="0" step="1" value="100">
+                  </div>
+
+                  <div id="dinemites-simple-settings" class="dinemites-settings-section" data-model-panel="simple">
+                    <div class="dinemites-settings-grid">
+                      <div class="param-label">
+                        <label for="dinemites-n-lags">Recent visits</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES recent visits" data-tooltip="Simple model: how many previous visits can make an observed allele count as persistent rather than new.">?</button>
+                      </div>
+                      <input id="dinemites-n-lags" type="number" min="1" step="1" value="3">
+                      <div class="param-label">
+                        <label for="dinemites-t-lag">Recent days</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES recent days" data-tooltip="Simple model: maximum calendar-day gap for previous observations to count as recent. Disabled when No day cutoff is selected.">?</button>
+                      </div>
+                      <input id="dinemites-t-lag" type="number" min="0" step="1" value="90" disabled>
+                    </div>
+                    <div class="check-row dinemites-no-cutoff">
+                      <input id="dinemites-no-day-cutoff" type="checkbox" checked>
+                      <label for="dinemites-no-day-cutoff">No day cutoff</label>
+                      <button type="button" class="param-help" aria-label="About DINEMITES no day cutoff" data-tooltip="Sets t_lag to infinity for the Simple model, so long gaps between visits do not by themselves make old alleles look new again.">?</button>
+                    </div>
+                  </div>
+
+                  <div id="dinemites-bayesian-settings" class="dinemites-settings-section" data-model-panel="bayesian" hidden>
+                    <div class="dinemites-settings-grid">
+                      <div class="param-label">
+                        <label for="dinemites-bayesian-lag-days">Covariate lag days</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES Bayesian lag days" data-tooltip="Bayesian model: lookback window used when generating internal lag and persistence covariates.">?</button>
+                      </div>
+                      <input id="dinemites-bayesian-lag-days" type="number" min="1" step="1" value="30">
+                      <div class="param-label">
+                        <label for="dinemites-bayesian-chains">Chains</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES Bayesian chains" data-tooltip="Number of Stan chains. More chains improve diagnostics but take longer.">?</button>
+                      </div>
+                      <input id="dinemites-bayesian-chains" type="number" min="1" step="1" value="4">
+                      <div class="param-label">
+                        <label for="dinemites-bayesian-parallel-chains">Parallel chains</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES Bayesian parallel chains" data-tooltip="How many Stan chains can run at the same time. Keep this at or below available CPU capacity.">?</button>
+                      </div>
+                      <input id="dinemites-bayesian-parallel-chains" type="number" min="1" step="1" value="2">
+                      <div class="param-label">
+                        <label for="dinemites-bayesian-warmup">Warmup iterations</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES Bayesian warmup iterations" data-tooltip="Stan adaptation iterations before samples are retained. Higher values can improve fitting but increase runtime.">?</button>
+                      </div>
+                      <input id="dinemites-bayesian-warmup" type="number" min="1" step="1" value="500">
+                      <div class="param-label">
+                        <label for="dinemites-bayesian-sampling">Sampling iterations</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES Bayesian sampling iterations" data-tooltip="Retained posterior draws per chain. Higher values reduce Monte Carlo noise but increase runtime.">?</button>
+                      </div>
+                      <input id="dinemites-bayesian-sampling" type="number" min="1" step="1" value="500">
+                      <div class="param-label">
+                        <label for="dinemites-bayesian-adapt-delta">Adapt delta</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES Bayesian adapt delta" data-tooltip="Stan NUTS target acceptance rate. Higher values can reduce divergent transitions but make sampling slower.">?</button>
+                      </div>
+                      <input id="dinemites-bayesian-adapt-delta" type="number" min="0.01" max="0.999" step="0.001" value="0.99">
+                      <div class="check-row">
+                        <input id="dinemites-covariate-season" type="checkbox" checked>
+                        <label for="dinemites-covariate-season">Season covariate</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES season covariate" data-tooltip="Wet is encoded as 1, dry as 0, and missing season gets a separate flag.">?</button>
+                      </div>
+                      <div class="check-row">
+                        <input id="dinemites-covariate-age" type="checkbox">
+                        <label for="dinemites-covariate-age">Age covariate</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES age covariate" data-tooltip="Uses numeric age from metadata; missing values use the median plus a missingness flag.">?</button>
+                      </div>
+                      <div class="check-row">
+                        <input id="dinemites-covariate-gender" type="checkbox">
+                        <label for="dinemites-covariate-gender">Gender covariate</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES gender covariate" data-tooltip="Female is encoded as 1, male as 0, and missing or unrecognized values get a separate flag.">?</button>
+                      </div>
+                      <div class="param-label-row">
+                        <label for="dinemites-infection-covariates">Custom covariates</label>
+                        <button type="button" class="param-help" aria-label="About DINEMITES custom covariates" data-tooltip="Optional comma-separated numeric DINEMITES covariate columns for advanced model choices.">?</button>
+                      </div>
+                      <input id="dinemites-infection-covariates" type="text" placeholder="Optional comma-separated columns" autocomplete="off">
+                    </div>
+                    <div class="check-row dinemites-dropout">
+                      <input id="dinemites-bayesian-drop-out" type="checkbox">
+                      <label for="dinemites-bayesian-drop-out">Drop-out model</label>
+                      <button type="button" class="param-help" aria-label="About DINEMITES drop-out model" data-tooltip="Optional Bayesian component that allows observed absence to reflect allele drop-out rather than definite biological absence.">?</button>
+                    </div>
+                  </div>
+                </details>
+
+                <div class="button-row dinemites-action-row">
+                  <button id="dinemites-run" class="primary" disabled>Run DINEMITES</button>
+                </div>
+                <div id="dinemites-message" class="inline-message"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section id="dinemites-results" class="panel dinemites-results-panel" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">DINEMITES</p>
+              <h2>Analysis results</h2>
+              <p id="dm-results-input-mode" class="analysis-result-mode"></p>
+            </div>
+          </div>
+          <p id="dm-diagnostics" class="analysis-note" hidden></p>
+
+          <div id="dinemites-summary" class="metrics dinemites-metrics">
+            <div><span>New infection events</span><strong id="dm-new-infections">--</strong></div>
+            <div><span>Mean molFOI</span><strong id="dm-molfoi">--</strong></div>
+            <div><span>Subjects</span><strong id="dm-subjects">--</strong></div>
+            <div><span>Model</span><strong id="dm-model">--</strong></div>
+          </div>
+
+          <div class="dinemites-results-tabs" role="tablist" aria-label="DINEMITES result views">
+            <button class="dinemites-results-tab is-active" type="button" role="tab" aria-selected="true" data-dinemites-results-view="plots">Subject plots</button>
+            <button class="dinemites-results-tab" type="button" role="tab" aria-selected="false" data-dinemites-results-view="tables">Result tables</button>
+          </div>
+
+          <div id="dinemites-results-plots" class="dinemites-results-view">
+            <div class="plot-browser-row">
+              <span id="dm-plot-count">Plots will appear here after the analysis completes.</span>
+              <div class="plot-browser-controls">
+                <button id="dm-prev-plot" class="plot-browser-nav" type="button" aria-label="Previous DINEMITES plot" title="Previous DINEMITES plot" disabled>&lt;</button>
+                <select id="dm-plot-selector" aria-label="DINEMITES subject plot" disabled>
+                  <option>No plots</option>
+                </select>
+                <button id="dm-next-plot" class="plot-browser-nav" type="button" aria-label="Next DINEMITES plot" title="Next DINEMITES plot" disabled>&gt;</button>
+              </div>
+            </div>
+            <div id="dinemites-plot-gallery" class="dinemites-plot-gallery" hidden></div>
+          </div>
+
+          <section id="dinemites-results-tables" class="dinemites-results-view dinemites-output-tables" aria-labelledby="dinemites-output-tables-heading" hidden>
+            <div class="dcifer-section-heading">
+              <div>
+                <h3 id="dinemites-output-tables-heading">Result tables</h3>
+                <p>Inspect the allele-level model inputs and saved DINEMITES outputs.</p>
+              </div>
+              <span id="dm-output-table-count"></span>
+            </div>
+            <div id="dm-output-tables"></div>
+          </section>
+        </section>
+
+      </section>
+
+      <section id="tab-dcifer" class="tab-panel">
+        <div class="analysis-layout">
+          <section id="dcifer-card" class="panel dcifer-card">
+            <div class="panel-heading">
+              <div>
+                <p class="eyebrow">Relatedness analysis</p>
+                <h2>Dcifer</h2>
+              </div>
+            </div>
+
+            <div class="dcifer-config">
+              <p class="results-copy">Estimate pairwise genetic relatedness between infections from retained multi-locus alleles.</p>
+              <p class="analysis-note">Dcifer is most informative with multiple loci and representative background allele frequencies. Single-locus results are flagged as exploratory.</p>
+              <div id="dcifer-readiness" class="analysis-readiness" aria-live="polite"></div>
+
+              <input id="dcifer-enable" type="checkbox" checked hidden>
+
+              <div id="dcifer-controls" class="dcifer-controls">
+                <div class="analysis-mode-control">
+                  <label for="dcifer-analysis-mode">Analysis input</label>
+                  <select id="dcifer-analysis-mode" class="scientific-select">
+                    <option value="off" selected>Primary - exact CIGAR alleles</option>
+                    <option value="summed" disabled>Sensitivity - CD-HIT 98.9% clusters</option>
+                  </select>
+                  <p id="dcifer-analysis-mode-note">Primary results are saved in the Dcifer folder.</p>
+                </div>
+                <details class="dcifer-advanced">
+                  <summary>Advanced settings</summary>
+                  <div class="dcifer-settings-grid">
+                    <div class="param-label">
+                      <label for="dcifer-coi-lrank">COI locus rank</label>
+                      <button type="button" class="param-help" aria-label="About Dcifer COI locus rank" data-tooltip="Which ranked locus is used for the COI estimate. Higher rank can reduce sensitivity to one unusually diverse locus.">?</button>
+                    </div>
+                    <input id="dcifer-coi-lrank" type="number" min="1" step="1" value="2">
+                    <div class="param-label">
+                      <label for="dcifer-ibd-grid-nr">IBD grid points</label>
+                      <button type="button" class="param-help" aria-label="About Dcifer IBD grid points" data-tooltip="Resolution of the relatedness grid search. More grid points can be more precise but slower.">?</button>
+                    </div>
+                    <input id="dcifer-ibd-grid-nr" type="number" min="1" step="100" value="1000">
+                    <div class="param-label">
+                      <label for="dcifer-alpha">Alpha</label>
+                      <button type="button" class="param-help" aria-label="About Dcifer alpha" data-tooltip="Threshold used by Dcifer for confidence intervals and for counting pairs with p-value <= alpha. Treat this count as exploratory when allele frequencies come from the same run.">?</button>
+                    </div>
+                    <input id="dcifer-alpha" type="number" min="0.001" max="0.999" step="0.001" value="0.05">
+                  </div>
+                </details>
+
+                <div class="button-row dcifer-action-row">
+                  <button id="dcifer-run" class="primary" disabled>Run Dcifer</button>
+                </div>
+                <div id="dcifer-message" class="inline-message"></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <section id="dcifer-results" class="panel dcifer-results-panel" hidden>
+          <div class="panel-heading">
+            <div>
+              <p class="eyebrow">Dcifer</p>
+              <h2>Analysis results</h2>
+              <p id="dcifer-results-input-mode" class="analysis-result-mode"></p>
+            </div>
+          </div>
+
+          <div class="metrics dcifer-metrics">
+            <div><span>Samples</span><strong id="dcifer-samples">--</strong></div>
+            <div><span>Pairs</span><strong id="dcifer-pairs">--</strong></div>
+            <div><span>Top pair estimate</span><strong id="dcifer-max-relatedness">--</strong></div>
+            <div><span>Pairs q &le; alpha</span><strong id="dcifer-q-le-alpha">--</strong></div>
+          </div>
+          <p id="dcifer-summary-note" class="results-copy dcifer-summary-note"></p>
+
+          <div class="plot-jump-row">
+            <span id="dcifer-plot-count">Heatmaps will appear here after the analysis completes.</span>
+            <button id="dcifer-view-plots" type="button" disabled>View heatmaps</button>
+          </div>
+          <div id="dcifer-plot-gallery" class="dcifer-plot-gallery" hidden></div>
+
+          <div class="dcifer-section-heading">
+            <h3>Pairwise relatedness</h3>
+          </div>
+          <div class="table-wrap compact">
+            <table>
+              <thead>
+                <tr>
+                  <th>Sample A</th>
+                  <th>Sample B</th>
+                  <th>Relatedness</th>
+                  <th>p-value</th>
+                  <th>q-value</th>
+                  <th>Type</th>
+                </tr>
+              </thead>
+              <tbody id="dcifer-pairs-table">
+                <tr><td colspan="6" class="empty">Run Dcifer to see pairwise relatedness.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="button-row dcifer-downloads">
+            <button id="dcifer-dl-pairs" disabled>Download pairs</button>
+            <button id="dcifer-dl-coi" disabled>Download COI</button>
+            <button id="dcifer-dl-input" disabled>Download input</button>
+            <button id="dcifer-dl-matrix" disabled>Download matrix</button>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}?v={{ asset_version }}"></script>
+  </body>
+</html>

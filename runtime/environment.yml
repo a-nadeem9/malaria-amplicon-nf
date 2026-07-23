@@ -1,0 +1,53 @@
+name: simplseq
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - python=3.11
+  - openjdk=17
+  - nextflow
+  - flask
+  - waitress>=3,<4
+  - pandas
+  - openpyxl
+  - biopython
+  - cutadapt
+  - cd-hit=4.8.1
+  - trim-galore
+  - muscle=3.8.1551
+  - bbmap
+  - seqkit
+  - r-base
+  - r-argparse
+  - r-data.table
+  - r-seqinr
+  - r-stringr
+  - r-domc
+  - r-dorng
+  - bioconductor-limma
+  - bioconductor-dada2
+  - bioconductor-biostrings
+  - bioconductor-pwalign
+  # DINEMITES and dcifer downstream analysis dependencies.
+  # dcifer itself is installed from CRAN by install-simplseq.sh because
+  # r-dcifer is not currently available in the conda channels used here.
+  - r-dplyr
+  - r-tidyr
+  - r-optparse
+  - r-ggplot2
+  - r-jsonlite
+  - r-ggnewscale
+  - r-ggrepel
+  - r-linkcomm
+  - r-reshape2
+  - r-foreach
+  - r-doparallel
+  - r-plyr
+  - r-purrr
+  - r-posterior
+  - r-rstan
+  - r-cmdstanr
+  - pip
+  - pip:
+      - -e .

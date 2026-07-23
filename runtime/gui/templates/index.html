@@ -48,6 +48,7 @@
               <small>Confirm the shared allele input</small>
             </span>
           </button>
+          <img class="downstream-flow-arrow" src="/assets/icons/arrow-right.svg" alt="" aria-hidden="true">
           <button class="downstream-subtab" data-downstream-tab="dinemites">
             <span class="downstream-nav-marker" aria-hidden="true"></span>
             <span class="downstream-nav-copy">
@@ -55,6 +56,7 @@
               <small>Longitudinal infection analysis</small>
             </span>
           </button>
+          <img class="downstream-flow-arrow" src="/assets/icons/arrow-right.svg" alt="" aria-hidden="true">
           <button class="downstream-subtab" data-downstream-tab="dcifer">
             <span class="downstream-nav-marker" aria-hidden="true"></span>
             <span class="downstream-nav-copy">
@@ -78,7 +80,6 @@
             <div class="section-content">
               <div class="section-heading">
                 <div>
-                  <p class="section-step">1 · Required</p>
                   <h2>Choose sequencing files</h2>
                   <p>Select the folder containing paired R1 and R2 FASTQ files.</p>
                 </div>
@@ -106,13 +107,15 @@
 
                   <div class="metadata-file-heading">
                     <label for="metadata-path">Metadata file</label>
-                    <a class="metadata-template-link" href="/api/metadata/template" download>Download template</a>
                   </div>
                   <div class="input-row">
                     <input id="metadata-path" type="text" placeholder="No metadata file selected" autocomplete="off">
                     <button id="choose-metadata-file" type="button" title="Choose an optional metadata file">Choose file</button>
                   </div>
-                  <p id="metadata-path-help" class="field-help">Leave blank for a sequencing-only run.</p>
+                  <div class="metadata-file-footer">
+                    <p id="metadata-path-help" class="field-help">Leave blank for a sequencing-only run.</p>
+                    <a class="metadata-template-link" href="/api/metadata/template" download>Download CSV template</a>
+                  </div>
 
                   <details class="metadata-file-settings">
                     <summary>File settings</summary>
@@ -137,7 +140,6 @@
                   <section id="metadata-contract" class="metadata-contract" hidden aria-live="polite">
                     <header class="metadata-contract__overview">
                       <div>
-                        <p class="eyebrow">Metadata check</p>
                         <h3 id="metadata-contract-title">Spreadsheet ready</h3>
                       </div>
                       <span id="metadata-contract-status" class="metadata-contract__status">Needs review</span>
@@ -378,7 +380,6 @@
       <section id="tab-run" class="tab-panel">
         <header class="workspace-heading">
           <div>
-            <p class="eyebrow">Workflow execution</p>
             <h1>Configure and run</h1>
             <p>Choose where this run will be stored, then follow each pipeline stage as it completes.</p>
           </div>
@@ -387,7 +388,6 @@
           <section class="panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Run</p>
                 <h2>Launch workflow</h2>
               </div>
             </div>
@@ -444,7 +444,6 @@
           <section class="panel">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Progress</p>
                 <h2 id="current-stage">No active run</h2>
               </div>
             </div>
@@ -471,9 +470,6 @@
             <span class="summary-hint">Live workflow output</span>
           </summary>
           <div class="terminal-panel">
-            <div class="terminal-heading">
-              <p class="eyebrow">Workflow messages</p>
-            </div>
             <pre id="technical-log">&gt; Waiting for run.
 &gt; Live progress appears here while malaria-amplicon-nf is active.</pre>
           </div>
@@ -491,7 +487,6 @@
           <div class="results-toolbar">
             <div class="results-run-control">
               <div class="results-run-summary">
-                <p class="eyebrow">Saved to</p>
                 <h3 id="results-run-name">No run selected</h3>
               </div>
               <div class="results-run-actions">
@@ -537,7 +532,6 @@
           <section class="analysis-input-panel qc-section qc-define-stage">
             <div class="qc-section-heading qc-section-heading--shared">
               <div>
-                <p class="eyebrow">Step 1 · Shared filter</p>
                 <h2>Filter participant visits</h2>
                 <p>Applied once to both downstream analyses.</p>
               </div>
@@ -582,7 +576,6 @@
           <section class="analysis-input-panel qc-section qc-choice-stage">
             <div class="qc-section-heading qc-section-heading--shared">
               <div>
-                <p class="eyebrow">Step 2 · Analysis input</p>
                 <h2>Choose an allele definition</h2>
                 <p>Start with exact alleles. Use clustering only as a sensitivity check.</p>
               </div>
@@ -593,7 +586,6 @@
                   <label class="analysis-option-selector" for="analysis-choice-primary">
                     <input id="analysis-choice-primary" class="analysis-option-radio" type="radio" name="analysis-input-choice" value="off" checked>
                     <span>
-                      <span class="eyebrow">Standard analysis</span>
                       <strong>Exact CIGAR alleles</strong>
                     </span>
                   </label>
@@ -621,7 +613,6 @@
                   <label class="analysis-option-selector" for="analysis-choice-cdhit">
                     <input id="analysis-choice-cdhit" class="analysis-option-radio" type="radio" name="analysis-input-choice" value="summed">
                     <span>
-                      <span class="eyebrow">Sensitivity check</span>
                       <strong>CD-HIT 98.9% clusters</strong>
                     </span>
                   </label>
@@ -655,7 +646,6 @@
           <section id="dinemites-card" class="panel dinemites-card">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Longitudinal genotyping analysis</p>
                 <h2>DINEMITES</h2>
               </div>
             </div>
@@ -805,7 +795,6 @@
         <section id="dinemites-results" class="panel dinemites-results-panel" hidden>
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">DINEMITES</p>
               <h2>Analysis results</h2>
               <p id="dm-results-input-mode" class="analysis-result-mode"></p>
             </div>
@@ -857,7 +846,6 @@
           <section id="dcifer-card" class="panel dcifer-card">
             <div class="panel-heading">
               <div>
-                <p class="eyebrow">Relatedness analysis</p>
                 <h2>Dcifer</h2>
               </div>
             </div>
@@ -911,7 +899,6 @@
         <section id="dcifer-results" class="panel dcifer-results-panel" hidden>
           <div class="panel-heading">
             <div>
-              <p class="eyebrow">Dcifer</p>
               <h2>Analysis results</h2>
               <p id="dcifer-results-input-mode" class="analysis-result-mode"></p>
             </div>

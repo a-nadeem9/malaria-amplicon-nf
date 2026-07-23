@@ -943,6 +943,7 @@ function renderMetadataStatusValues(payload) {
 function renderMetadataCalendarPreview(payload) {
   const container = $("#metadata-calendar-preview");
   const status = $("#metadata-contract-status");
+  const title = $("#metadata-contract-title");
   if (!container || !status || !payload) return;
   const columns = metadataContract.columns || {};
   const hasIdentity = Boolean(columns.participant_id);
@@ -960,16 +961,19 @@ function renderMetadataCalendarPreview(payload) {
   const headline = document.createElement("strong");
   const detail = document.createElement("span");
   if (!metadataContractValid) {
+    text(title, "Mapping needed");
     text(headline, "Metadata mapping incomplete");
     text(detail, "Choose a participant column and a complete date or visit-month column.");
     status.className = "metadata-contract__status is-review";
     text(status, "Needs mapping");
   } else if (!hasDetection) {
+    text(title, "Dates mapped");
     text(headline, `${Number(payload.records || 0).toLocaleString()} dated metadata rows`);
     text(detail, "Sequencing-only longitudinal calendar: ungenotyped visits cannot be classified as negative or missing.");
     status.className = "metadata-contract__status is-limited";
     text(status, "Calendar limited");
   } else {
+    text(title, "Spreadsheet ready");
     text(headline, `${Number(payload.records || 0).toLocaleString()} dated metadata rows`);
     text(detail, `${counts.positive.toLocaleString()} positive | ${counts.negative.toLocaleString()} negative | ${counts.review.toLocaleString()} review | ${counts.ignore.toLocaleString()} ignored`);
     status.className = `metadata-contract__status${counts.review ? " is-limited" : " is-ready"}`;
@@ -1010,6 +1014,8 @@ async function inspectMetadata() {
     renderMetadataDetectionValues(payload);
     renderMetadataStatusValues(payload);
     renderMetadataCalendarPreview(payload);
+    const reviewDetails = $("#metadata-review-details");
+    if (reviewDetails && !metadataContractValid) reviewDetails.open = true;
     container.className = "metadata-inspection";
     container.replaceChildren();
     const warnings = (payload.issues || []).filter((issue) => issue.severity !== "info");
@@ -1033,6 +1039,8 @@ async function inspectMetadata() {
     latestMetadataInspection = null;
     metadataContractValid = false;
     contractSection.hidden = false;
+    const reviewDetails = $("#metadata-review-details");
+    if (reviewDetails) reviewDetails.open = true;
     container.hidden = false;
     container.className = "metadata-inspection has-error";
     text(container, error.message || "Metadata could not be inspected.");
@@ -1498,6 +1506,8 @@ async function scanFastqs() {
   if ($("#metadata-path")?.value.trim() && !metadataContractValid) {
     const details = $(".metadata-workspace");
     if (details) details.open = true;
+    const reviewDetails = $("#metadata-review-details");
+    if (reviewDetails) reviewDetails.open = true;
     setMetadataMessage("Map the participant and visit columns before scanning.", "warn");
     $("#metadata-contract")?.scrollIntoView({behavior: "smooth", block: "center"});
     return;

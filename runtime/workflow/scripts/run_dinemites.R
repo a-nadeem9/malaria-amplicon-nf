@@ -192,17 +192,20 @@ build_time_axis_labels <- function(dataset) {
 
   labels <- as.character(time_map$time)
 
-  if ("date_label" %in% colnames(time_map)) {
-    date_labels <- trimws(as.character(time_map$date_label))
-    labels <- ifelse(!is.na(date_labels) & nchar(date_labels) > 0,
-                     paste0(time_map$time, "\n", date_labels),
-                     labels)
-  } else if ("date_full" %in% colnames(time_map)) {
+  if ("date_full" %in% colnames(time_map)) {
     dates <- tryCatch(as.Date(time_map$date_full),
                       error = function(e) rep(as.Date(NA), nrow(time_map)))
     labels <- ifelse(!is.na(dates),
-                     paste0(time_map$time, "\n", format(dates, "%b %Y")),
+                     paste0(time_map$time, "\n", format(dates, "%d %b %Y")),
                      labels)
+  } else if ("date_label" %in% colnames(time_map)) {
+    date_labels <- trimws(as.character(time_map$date_label))
+    parsed_dates <- suppressWarnings(as.Date(date_labels, format = "%d %b %Y"))
+    labels <- ifelse(!is.na(parsed_dates),
+                     paste0(time_map$time, "\n", format(parsed_dates, "%d %b %Y")),
+                     ifelse(!is.na(date_labels) & nchar(date_labels) > 0,
+                            paste0(time_map$time, "\n", date_labels),
+                            labels))
   }
 
   stats::setNames(labels, as.character(time_map$time))
@@ -344,9 +347,10 @@ apply_time_axis_to_plot <- function(plot_out, x_breaks, x_labels, x_limit_max,
   x_scale <- scale_x_continuous(
     breaks = x_breaks,
     labels = x_labels,
-    limits = c(min(x_breaks), x_limit_max)
+    limits = c(min(x_breaks), x_limit_max),
+    guide = guide_axis(n.dodge = 2)
   )
-  x_label <- labs(x = "Day\nMonth/Year")
+  x_label <- labs(x = "Study day\nCollection date")
   x_theme <- theme(axis.text.x = element_text(size = 11, color = "grey10", lineheight = 0.95))
   allele_axis_theme <- theme(
     axis.text.y = element_text(size = 10, color = "grey10"),
@@ -431,8 +435,13 @@ if (model_type %in% c("bayesian", "clustering")) {
 }
 
 # ── 1. Read input data ────────────────────────────────────────────────────
-dataset <- read.csv(args$input, header = TRUE, sep = "\t",
-                    stringsAsFactors = FALSE)
+dataset <- read.csv(
+  args$input,
+  header = TRUE,
+  sep = "\t",
+  stringsAsFactors = FALSE,
+  na.strings = c("", "NA")
+)
 required_columns <- c("allele", "time", "subject")
 missing_columns <- setdiff(required_columns, colnames(dataset))
 if (length(missing_columns) > 0) {
@@ -444,7 +453,7 @@ if (length(missing_columns) > 0) {
 # filenames need stable character keys across every model and input source.
 dataset <- dataset %>%
   mutate(
-    allele = as.character(.data$allele),
+    allele = na_if(trimws(as.character(.data$allele)), ""),
     subject = as.character(.data$subject),
     time = suppressWarnings(as.numeric(.data$time))
   )
@@ -463,7 +472,9 @@ if (length(infection_general_covariates) == 0) {
 
 cat("[DINEMITES/run] Loaded", nrow(dataset), "rows (",
     length(unique(dataset$subject)), "subjects,",
-    length(unique(dataset$allele)), "alleles )\n")
+    length(unique(stats::na.omit(dataset$allele))), "alleles )\n")
+cat("[DINEMITES/run] Visit placeholders:", sum(is.na(dataset$allele)),
+    "(preserved as visit metadata; never treated as alleles)\n")
 cat("[DINEMITES/run] Infection general covariates:",
     ifelse(length(infection_general_covariates) > 0,
            paste(infection_general_covariates, collapse = ", "),
@@ -473,6 +484,10 @@ cat("[DINEMITES/run] Infection general covariates:",
 # ── 2. Fill in dataset (complete allele × subject × time grid) ─────────────
 cat("[DINEMITES/run] Filling in dataset (complete grid)...\n")
 dataset_filled <- fill_in_dataset(dataset)
+if (any(is.na(dataset_filled$allele) |
+        trimws(as.character(dataset_filled$allele)) == "")) {
+  stop("[DINEMITES/run] Internal error: the filled dataset contains a blank allele.")
+}
 cat("[DINEMITES/run] Filled dataset:", nrow(dataset_filled), "rows\n")
 
 qpcr_times <- data.frame(subject = character(), time = numeric())
@@ -505,28 +520,22 @@ if (nrow(qpcr_times) > 0) {
   cat("[DINEMITES/run] Marking", nrow(qpcr_times),
       "PCR-positive visits with missing genotypes...\n")
   dataset_filled <- add_qpcr_times(dataset_filled, qpcr_times = qpcr_times)
-  n_unknown_genotypes <- sum(dataset_filled$present == 2, na.rm = TRUE)
-  if (n_unknown_genotypes > 0) {
-    detected_cores <- suppressWarnings(parallel::detectCores())
-    if (is.na(detected_cores) || detected_cores < 2) {
-      detected_cores <- 2L
-    }
-    n_cores <- max(1L, min(4L, detected_cores - 1L))
-    set.seed(args$seed)
-    cat("[DINEMITES/run] Creating", args$n_imputations,
-        "complete genotype imputations on", n_cores, "cores...\n")
-    imputed_datasets <- impute_dataset(
-      dataset_filled,
-      n_imputations = args$n_imputations,
-      n_cores = n_cores,
-      verbose = TRUE
-    )
-    dataset_filled <- add_probability_present(dataset_filled, imputed_datasets)
-    has_qpcr_imputation <- TRUE
-  } else {
-    cat("[DINEMITES/run] Every PCR-positive visit already has genotype data;",
-        "skipping imputation.\n")
+  detected_cores <- suppressWarnings(parallel::detectCores())
+  if (is.na(detected_cores) || detected_cores < 2) {
+    detected_cores <- 2L
   }
+  n_cores <- max(1L, min(4L, detected_cores - 1L))
+  set.seed(args$seed)
+  cat("[DINEMITES/run] Creating", args$n_imputations,
+      "complete genotype imputations on", n_cores, "cores...\n")
+  imputed_datasets <- impute_dataset(
+    dataset_filled,
+    n_imputations = args$n_imputations,
+    n_cores = n_cores,
+    verbose = TRUE
+  )
+  dataset_filled <- add_probability_present(dataset_filled, imputed_datasets)
+  has_qpcr_imputation <- TRUE
 }
 
 prepare_bayesian_dataset <- function(model_dataset) {

@@ -36,6 +36,7 @@ const runtimeEnvironment = read("runtime/environment.yml");
 const linuxRuntimeLock = read("runtime/locks/linux-64-explicit.txt");
 const macRuntimeLock = read("runtime/locks/osx-64-explicit.txt");
 const desktopRuntimePrep = read("scripts/prepare-desktop-runtime.mjs");
+const runDinemites = read("runtime/workflow/scripts/run_dinemites.R");
 
 expect(packageJson.name === "malaria-amplicon-nf", "package.json name must be malaria-amplicon-nf");
 expect(tauriConfig.productName === "malaria-amplicon-nf", "Tauri productName must be malaria-amplicon-nf");
@@ -86,6 +87,24 @@ expect(styles.includes(".runtime-spinner"), "styles.css must define the minimal 
 expect(
   postProcDada2.includes("write.fasta(lapply(seqs, s2c)"),
   "postProc_dada2.R must write ASV FASTA sequences with lapply, not header-only sapply output"
+);
+expect(
+  runDinemites.includes('na.strings = c("", "NA")') &&
+    runDinemites.includes('allele = na_if(trimws(as.character(.data$allele)), "")') &&
+    runDinemites.includes("the filled dataset contains a blank allele"),
+  "DINEMITES must preserve blank allele rows as visit metadata, never as alleles"
+);
+expect(
+  runDinemites.includes("dataset_filled <- add_qpcr_times") &&
+    runDinemites.includes("imputed_datasets <- impute_dataset") &&
+    runDinemites.includes("has_qpcr_imputation <- TRUE") &&
+    !runDinemites.includes("n_unknown_genotypes"),
+  "DINEMITES must impute PCR-positive visits that lack genotype calls"
+);
+expect(
+  runDinemites.includes('format(dates, "%d %b %Y")') &&
+    runDinemites.includes("guide = guide_axis(n.dodge = 2)"),
+  "DINEMITES plots must show full collection dates on non-overlapping axis rows"
 );
 
 expect(!libRs.includes("curl -fsSL {INSTALL_URL} | bash"), "desktop launcher must not pipe a remote script into bash");

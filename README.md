@@ -8,6 +8,14 @@
 
 The application also supports additional or legacy amplicons, including AMA1, when suitable reference files are provided. All input data and results remain on the local computer. The exact CIGAR allele table is the primary result. KELT contamination screening and CD-HIT clustering are separate quality-control and sensitivity paths; neither silently replaces the primary allele definition.
 
+## Workflow Overview
+
+<p align="center">
+  <a href="assets/workflows/malaria-amplicon-workflow-overview.svg">
+    <img src="assets/workflows/malaria-amplicon-workflow-overview.png" alt="Overview of the malaria-amplicon-nf workflow." width="100%">
+  </a>
+</p>
+
 ## Install
 
 Download the Windows or Apple Silicon macOS installer from:

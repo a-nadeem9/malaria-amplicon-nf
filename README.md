@@ -6,7 +6,7 @@
 
 `malaria-amplicon-nf` is a local desktop application for SIMPLseq malaria amplicon sequencing. It scans paired FASTQ files, prepares a reproducible sample sheet, runs the Nextflow workflow, presents run-level quality control, and prepares shared allele tables for DINEMITES and Dcifer.
 
-The application also supports additional or legacy amplicons, including AMA1, when suitable reference files are provided. All input data and results remain on the local computer. The exact CIGAR allele table is the primary result. KELT contamination screening and CD-HIT clustering are separate quality-control and sensitivity paths; neither silently replaces the primary allele definition.
+All input data and results remain on the local computer. The exact CIGAR allele table is the primary result. KELT contamination screening and CD-HIT clustering are separate quality-control and sensitivity paths; neither silently replaces the primary allele definition.
 
 ## Workflow Overview
 
@@ -23,17 +23,6 @@ Download the Windows or Apple Silicon macOS installer from:
 https://github.com/a-nadeem9/malaria-amplicon-nf/releases
 
 Windows requires WSL 2. The application reuses an available WSL distribution and installs the managed analysis environment inside it. If WSL is present but no Linux distribution is registered, the launcher installs standard Ubuntu before continuing. macOS uses the same pinned workflow environment without WSL.
-
-### Opening the macOS application
-
-The macOS application is ad-hoc signed so it can be distributed without a paid Apple Developer account. Apple does not notarize ad-hoc signed applications, so macOS requires one explicit approval on first launch:
-
-1. Download the Apple Silicon DMG and drag `malaria-amplicon-nf` to Applications.
-2. Try to open the application once and dismiss the unidentified-developer warning.
-3. Open **System Settings → Privacy & Security**.
-4. In the Security section, click **Open**, then **Open Anyway**, and confirm with the Mac login password.
-
-After that approval, macOS saves the application as an exception and it opens normally. See Apple's official [Open a Mac app from an unknown developer](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac) instructions. Only approve an installer downloaded from this repository's Releases page.
 
 ## Run The Application
 

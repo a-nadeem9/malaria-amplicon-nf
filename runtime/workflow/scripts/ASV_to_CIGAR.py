@@ -7,6 +7,8 @@ import os
 import subprocess
 import re
 import csv
+import hashlib
+import json
 from pathlib import Path
 
 from Bio import SeqIO, AlignIO
@@ -236,8 +238,106 @@ def _get_homopolymer_runs(seq, min_length=5):
     return runs
 
 
+def coordinate_intervals(positions):
+    """Compact sorted one-based reference positions into inclusive intervals."""
+    intervals = []
+    for pos in sorted(positions):
+        if intervals and pos == intervals[-1][1] + 1:
+            intervals[-1][1] = pos
+        else:
+            intervals.append([pos, pos])
+    return intervals
+
+
+def shared_coverage(aln, excluded, homopolymer_runs):
+    """One observation span for all alleles, using the CIGAR alignment itself.
+
+    A gap run touching unknown sequence is uncertain too. This includes the
+    compensating alignment gaps introduced beside reference-length N padding.
+    Fully observed alleles are projected onto the same span as partial alleles.
+    """
+    anchor = str(aln[0].seq).upper()
+    reference = anchor.replace('-', '')
+    coords = []
+    pos = 1
+    for base in anchor:
+        coords.append(pos)
+        if base != '-':
+            pos += 1
+    unknown_positions = set()
+    observations = {}
+    for record in aln[1:]:
+        query = str(record.seq).upper()
+        unknown = {i for i, (r, q) in enumerate(zip(anchor, query))
+                   if r not in 'ACGT-' or q not in 'ACGT-'}
+        uncertain = set(unknown)
+        i = 0
+        while i < len(query):
+            if query[i] in 'ACGT' and anchor[i] != '-':
+                i += 1
+                continue
+            start = i
+            while i < len(query) and (query[i] not in 'ACGT' or anchor[i] == '-'):
+                i += 1
+            if any(j in unknown for j in range(start, i)):
+                uncertain.update(range(start, i))
+        positions = set()
+        for i in uncertain:
+            if anchor[i] == '-':
+                # An unobserved insertion cannot be declared absent. Exclude
+                # its reference flanks from the common comparison as well.
+                positions.update(p for p in (coords[i]-1, coords[i]) if 1 <= p <= len(reference))
+            else:
+                positions.add(coords[i])
+        unknown_positions.update(positions)
+        observations[record.id] = {
+            'unknown_bases': sum(base not in 'ACGT-' for base in query),
+            'uncertain_reference_intervals': coordinate_intervals(positions),
+        }
+    if not unknown_positions:
+        return None
+    other_masked = set(excluded or []) | {coords[i] for i in homopolymer_runs if anchor[i] != '-'}
+    initial_unknown_positions = set(unknown_positions)
+    boundary_drivers = set()
+    # A deletion crossing the comparison boundary must not become a smaller
+    # called deletion. Exclude the whole event consistently in every allele.
+    changed = True
+    while changed:
+        changed = False
+        for record in aln[1:]:
+            for event in re.finditer('-+', str(record.seq)):
+                positions = {coords[i] for i in range(event.start(), event.end()) if anchor[i] != '-'}
+                if not positions:
+                    continue
+                support = positions | {min(positions)-1, max(positions)+1}
+                if support & (unknown_positions | other_masked) and positions - unknown_positions:
+                    unknown_positions.update(positions)
+                    boundary_drivers.add(record.id)
+                    changed = True
+    callable_positions = set(range(1, len(reference)+1)) - unknown_positions - other_masked
+    if not callable_positions:
+        raise ValueError(f'No shared callable reference positions for {aln[0].id}; cannot assign exact alleles')
+    definition = {
+        'method': 'common_callable_reference_positions_v1',
+        'reference_id': aln[0].id,
+        'reference_sha256': hashlib.sha256(reference.encode()).hexdigest(),
+        'callable_intervals': coordinate_intervals(callable_positions),
+    }
+    comparison_id = hashlib.sha256(json.dumps(definition, sort_keys=True, separators=(',', ':')).encode()).hexdigest()[:32]
+    return {
+        **definition, 'comparison_id': comparison_id,
+        'reference_length': len(reference), 'shared_callable_bases': len(callable_positions),
+        'uncertain_reference_intervals': coordinate_intervals(unknown_positions),
+        'boundary_event_masked_intervals': coordinate_intervals(unknown_positions - initial_unknown_positions),
+        'boundary_event_mask_driver_asvs': sorted(boundary_drivers),
+        'other_masked_intervals': coordinate_intervals(other_masked),
+        'asvs': observations,
+    }
+
+
 # parse muscle alignment
-def parse_alignment(alignment, mask={}, min_homopolymer_length=5, amplicon=None):
+def parse_alignment(alignment, mask={}, min_homopolymer_length=5, amplicon=None,
+                    coverage=None, _mask_missing=True):
     """Parse amplicon alignment file, converting ASV to CIGAR string"""
     aln = AlignIO.read(alignment, "fasta")
     # sort such that amplicon reference is first in alignment
@@ -248,6 +348,7 @@ def parse_alignment(alignment, mask={}, min_homopolymer_length=5, amplicon=None)
         # don't parse if amplicon reference not in alignment (this shouldn't happen)
         return
 
+    homopolymer_runs = set()
     if min_homopolymer_length > 1:
         # detect homopolymer runs in reference sequence
         homopolymer_runs = _get_homopolymer_runs(aln[0], min_length=min_homopolymer_length)
@@ -258,6 +359,16 @@ def parse_alignment(alignment, mask={}, min_homopolymer_length=5, amplicon=None)
         print(f"WARNING: {os.path.basename(alignment)} extends beyond 3' end of reference sequence!", file=sys.stderr)
 
     masked = mask.get(aln[0].id, None)
+    profile = shared_coverage(aln, masked, homopolymer_runs) if _mask_missing else None
+    common_callable = None
+    if profile:
+        common_callable = {pos for start, end in profile['callable_intervals'] for pos in range(start, end+1)}
+        raw = parse_alignment(alignment, mask=mask, min_homopolymer_length=min_homopolymer_length,
+                              amplicon=amplicon, _mask_missing=False)
+        for asv, raw_cigar in raw.items():
+            profile['asvs'][asv]['raw_cigar'] = raw_cigar
+        if coverage is not None:
+            coverage[amplicon] = profile
 
     asv_to_cigar = {}
     for seq in aln[1:]:
@@ -266,6 +377,14 @@ def parse_alignment(alignment, mask={}, min_homopolymer_length=5, amplicon=None)
         indel = False # indicate alignment column in an indel
         masking = False # indicate alignment column is being masked
         for i in range(aln.get_alignment_length()):
+            if common_callable is not None:
+                observable = (pos in common_callable if anchor[i] != '-' else
+                              pos-1 in common_callable and pos in common_callable)
+                if not observable:
+                    indel = False
+                    if anchor[i] != '-':
+                        pos += 1
+                    continue
             # if anchor pos masked, or next base in anchor is masked and anchor position is a gap
             if masked and (pos in masked or (pos+1 in masked and anchor[i] == '-')):
                 if verbose and seq.id == aln[1].id:
@@ -309,12 +428,14 @@ def parse_alignment(alignment, mask={}, min_homopolymer_length=5, amplicon=None)
 
         if not cigar:
             cigar = "."
+        if profile:
+            cigar = f"partial@{profile['comparison_id']}:{cigar}"
         asv_to_cigar[seq.id] = cigar
     return asv_to_cigar
 
 
 # get variants per amplicon per position
-def parse_alignments(bins, mask={}, min_homopolymer_length=5, outdir="ASVs"):
+def parse_alignments(bins, mask={}, min_homopolymer_length=5, outdir="ASVs", coverage=None):
     """Parse multi-sequence alignment fasta file from MUSCLE"""
     cigars = {}
     for amplicon in sorted(bins):
@@ -323,7 +444,7 @@ def parse_alignments(bins, mask={}, min_homopolymer_length=5, outdir="ASVs"):
             print(f"ERROR: Could not find {msa}", file=sys.stderr)
             continue
         # store CIGAR strings per amplicon in dict
-        parsed = parse_alignment(msa, mask=mask, min_homopolymer_length=min_homopolymer_length, amplicon=amplicon)
+        parsed = parse_alignment(msa, mask=mask, min_homopolymer_length=min_homopolymer_length, amplicon=amplicon, coverage=coverage)
         if parsed is None:
             raise ValueError(f"Could not parse alignment for amplicon {amplicon}")
         cigars[amplicon] = parsed
@@ -477,6 +598,7 @@ def build_parser():
     parser.add_argument("seqtab", help="DADA2 seqtab tsv file")
     parser.add_argument("out", help="Output seqtab tsv file with amplicon/variant counts")
     parser.add_argument("--asv_to_cigar", help="Output file for ASV -> CIGAR string table")
+    parser.add_argument("--coverage-report", help="JSON comparison-region audit (default: output filename plus .coverage.json)")
     parser.add_argument("-a", "--alignments", default="alignments", help="Directory to store ASV alignment files (default: alignments)")
     parser.add_argument("-p", "--polyN", type=int, default=5, help="Mask homopolymer runs length >= polyN (default: 5; disabled < 2)")
     parser.add_argument("-r", "--min_reads", type=int, default=0, help="Minimum total reads to include ASV (default: 0, disabled)")
@@ -542,7 +664,16 @@ def main():
     run_muscle(bins, outdir=outdir)
 
     print("INFO: Parsing alignments to CIGAR strings", file=sys.stderr)
-    cigars = parse_alignments(bins, mask=mask, min_homopolymer_length=args.polyN, outdir=outdir)
+    coverage = {}
+    cigars = parse_alignments(bins, mask=mask, min_homopolymer_length=args.polyN, outdir=outdir, coverage=coverage)
+    coverage_path = Path(args.coverage_report or (str(args.out) + '.coverage.json'))
+    coverage_path.write_text(json.dumps({
+        'schema_version': 1,
+        'partial_allele_method': 'common_callable_reference_positions_v1',
+        'interpretation': 'Partial labels identify variants only within their declared shared comparison region. They do not establish full-locus identity.',
+        'partial_loci': coverage,
+        'fully_observed_loci': sorted(set(cigars) - set(coverage)),
+    }, indent=2) + '\n')
     if not cigars:
         print("ERROR: could not determine CIGAR strings", file=sys.stderr)
         sys.exit(1)

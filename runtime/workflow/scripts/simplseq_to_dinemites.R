@@ -145,6 +145,9 @@ if (length(missing_cols) > 0) {
 # --- 2. Parse column headers: "LOCUS,CIGAR" to locus + cigar ---
 # The first column is "sample"; remaining are "LOCUS,CIGAR" encoded haplotypes
 haplotype_cols <- setdiff(colnames(cigar_wide), "sample")
+bridge_file <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1])
+source(file.path(dirname(normalizePath(bridge_file)), "validate_cigar_regions.R"))
+validate_cigar_regions(haplotype_cols)
 
 parsed_cols <- data.frame(
   col_name = haplotype_cols,

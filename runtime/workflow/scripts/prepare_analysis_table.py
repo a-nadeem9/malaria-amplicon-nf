@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -99,13 +100,26 @@ def biological_metadata(samples: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, 
 
 def parse_allele_columns(columns: list[str]) -> pd.DataFrame:
     rows = []
+    definitions = {}
     for column in columns:
         locus, separator, allele = str(column).partition(",")
         if not separator or not locus or not allele:
             raise ValueError(
                 f"Allele column {column!r} is not encoded as LOCUS,ALLELE."
             )
+        partial = re.fullmatch(r"partial@([0-9a-f]{32}):(.+)", allele)
+        if allele.startswith('partial@') and not partial:
+            raise ValueError(f"Malformed partial-region allele: {column!r}")
+        definition = partial.group(1) if partial else 'full'
+        definitions.setdefault(locus, set()).add(definition)
         rows.append({"allele_column": column, "locus": locus, "allele": allele})
+    mixed = [locus for locus, spans in definitions.items() if len(spans) > 1]
+    if mixed:
+        raise ValueError(
+            "Cannot compare different observation regions at the same locus: "
+            + ", ".join(sorted(mixed))
+            + ". Reprocess the samples together to define one shared comparison region."
+        )
     return pd.DataFrame(rows)
 
 
@@ -120,6 +134,10 @@ def build_analysis_table(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("Allele count table sample IDs must be non-empty and unique.")
     allele_columns = [str(column) for column in source.columns if column != "sample_id"]
     parsed = parse_allele_columns(allele_columns)
+    partial_regions = {
+        row.locus: re.fullmatch(r"partial@([0-9a-f]{32}):(.+)", row.allele).group(1)
+        for row in parsed.itertuples() if row.allele.startswith('partial@')
+    }
     for column in allele_columns:
         numeric = pd.to_numeric(source[column], errors="coerce")
         invalid = numeric.isna() | ~numeric.map(math.isfinite) | (numeric < 0) | (numeric % 1 != 0)
@@ -398,6 +416,8 @@ def build_analysis_table(args: argparse.Namespace) -> dict[str, object]:
         "mode": args.mode,
         "replicate_policy": "strict",
         "source_table": str(Path(args.input).resolve()),
+        "partial_comparison_regions": partial_regions,
+        "partial_allele_interpretation": "Identity applies only within the declared common reference positions; the unread portion is unknown.",
         "biological_call_profile": {
             "minimum_sample_locus_reads": args.min_locus_reads,
             "minimum_abundance_percent": args.min_abundance_pct,
@@ -538,7 +558,8 @@ def build_analysis_table(args: argparse.Namespace) -> dict[str, object]:
         analysis_profile = {
             "schema_version": 2,
             "analysis_mode": args.mode,
-            "allele_definition": "cdhit_cluster_sum" if args.mode == "cdhit98" else "exact_cigar",
+            "allele_definition": "cdhit_cluster_sum" if args.mode == "cdhit98" else ("exact_cigar_with_declared_partial_regions" if partial_regions else "exact_cigar"),
+            "partial_comparison_regions": partial_regions,
             "abundance_threshold_percent": args.min_abundance_pct,
             "abundance_denominator": args.denominator,
             "minimum_sample_locus_reads": args.min_locus_reads,

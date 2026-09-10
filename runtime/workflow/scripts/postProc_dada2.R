@@ -70,6 +70,15 @@ alignment_row <- function(aln, hapid)
   patt <- c(pw_alignedPattern(aln[num]), pw_alignedSubject(aln[num]))
   dist <- as.numeric(adist(as.character(patt)[1], as.character(patt)[2]))
   ind <- as.numeric(sum(str_count(as.character(patt), "-")))
+  ref_bases <- strsplit(toupper(as.character(patt)[1]), "", fixed = TRUE)[[1]]
+  query_bases <- strsplit(toupper(as.character(patt)[2]), "", fixed = TRUE)[[1]]
+  known <- c("A", "C", "G", "T")
+  comparable <- ref_bases %in% known & query_bases %in% known
+  unknown <- !(query_bases %in% c(known, "-"))
+  # Newer Broad malaria_ampseq subtracts padded Ns before SNP filtering.
+  # Count observed substitutions directly for partial sequences: subtracting
+  # Ns from edit distance can produce negative counts beside alignment gaps.
+  snv_distance <- if (any(unknown)) sum(comparable & ref_bases != query_bases) else dist - ind
   data.frame(
     hapid = hapid,
     hapseq = as.character(patt)[2],
@@ -79,8 +88,10 @@ alignment_row <- function(aln, hapid)
     second_aln_score = second_score,
     alignment_score_margin = if (is.na(second_score)) NA_real_ else best_score - second_score,
     best_reference_ties = length(best_indices),
-    snv_dist = (dist - ind),
-    indel_dist = ind
+    snv_dist = snv_distance,
+    indel_dist = ind,
+    unknown_bases = sum(unknown),
+    comparable_bases = sum(comparable)
   )
 }
 
@@ -272,7 +283,8 @@ if (!args$no_reference) {
 		## Map truthset onto ASV summary table based on exact and inexact matches to truth set
 		alignment_columns <- c(
         "hapid", "refid", "snv_dist", "indel_dist", "aln_score",
-        "second_aln_score", "alignment_score_margin", "best_reference_ties"
+        "second_aln_score", "alignment_score_margin", "best_reference_ties",
+        "unknown_bases", "comparable_bases"
       )
       missing_alignment_columns <- setdiff(alignment_columns, colnames(align_df))
       if (length(missing_alignment_columns) > 0) {
@@ -292,11 +304,13 @@ if (!args$no_reference) {
         paste0("aln_score_", strains[p]),
         paste0("second_aln_score_", strains[p]),
         paste0("alignment_score_margin_", strains[p]),
-        paste0("best_reference_ties_", strains[p])
+        paste0("best_reference_ties_", strains[p]),
+        paste0("unknown_bases_", strains[p]),
+        paste0("comparable_bases_", strains[p])
       )
 		asvdf <- merge(asvdf, df, by = "hapid", sort = FALSE)
 		aligned_index <- match(asvdf$hapid, align_df$hapid)
-		asvdf$strain[(align_df$snv_dist[aligned_index] == 0 & align_df$indel_dist[aligned_index] == 0)] <- as.character(strains[p])
+		asvdf$strain[(align_df$snv_dist[aligned_index] == 0 & align_df$indel_dist[aligned_index] == 0 & align_df$unknown_bases[aligned_index] == 0)] <- as.character(strains[p])
 	}
 
   if (is.null(args$snv_filter) || !file.exists(args$snv_filter)) {

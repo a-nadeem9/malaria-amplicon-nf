@@ -296,6 +296,7 @@ process CIGAR_CONVERSION {
   time '1h'
   publishDir "${params.outdir}/run_dada2", mode: 'copy', overwrite: true, pattern: 'seqtab_cigar.tsv'
   publishDir "${params.outdir}/run_dada2", mode: 'copy', overwrite: true, pattern: 'asv_to_cigar.tsv'
+  publishDir "${params.outdir}/run_dada2", mode: 'copy', overwrite: true, pattern: 'cigar_coverage.json'
   publishDir "${params.outdir}/logs", mode: 'copy', overwrite: true, pattern: 'cigar_conversion.log'
 
   input:
@@ -308,6 +309,7 @@ process CIGAR_CONVERSION {
   output:
   path 'seqtab_cigar.tsv', emit: seqtab_cigar
   path 'asv_to_cigar.tsv', emit: asv_to_cigar
+  path 'cigar_coverage.json', emit: coverage
   path 'cigar_conversion.log', emit: log
 
   script:
@@ -322,6 +324,7 @@ process CIGAR_CONVERSION {
       "${seqtab}" \
       seqtab_cigar.tsv \
       --asv_to_cigar asv_to_cigar.tsv \
+      --coverage-report cigar_coverage.json \
       --amp_db "${reference}" \
       --alignments alignments \
       -p ${params.cigar_homopolymer_mask_length} \

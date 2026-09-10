@@ -64,6 +64,9 @@ haplotype_cols <- setdiff(colnames(cigar_wide), "sample")
 if (length(haplotype_cols) == 0) {
   stop("[dcifer/bridge] No CIGAR haplotype columns found.")
 }
+bridge_file <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[1])
+source(file.path(dirname(normalizePath(bridge_file)), "validate_cigar_regions.R"))
+validate_cigar_regions(haplotype_cols)
 
 parsed_cols <- data.frame(
   col_name = haplotype_cols,

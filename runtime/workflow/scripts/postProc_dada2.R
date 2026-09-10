@@ -17,13 +17,16 @@ parser$add_argument("-o", "--output",
 parser$add_argument("--fasta", action='store_true', help="Write ASV sequences separately into fasta file")
 parser$add_argument("-snv", "--snv_filter", 
                     help="Path to file for filtering ASVs based on edit distance")
-parser$add_argument("--indel_filter", 
-                    help="Optional absolute INDEL-distance override. By default, use the INDEL column in --snv_filter")
+parser$add_argument("--indel_filter", type="double", default=0.10,
+                    help="Maximum inserted/deleted bases divided by reference length (default: 0.10); equality passes")
 parser$add_argument("--strain", default="3D7", help="Name of Specific strain to map to. Defaults to 3D7")
 parser$add_argument("--strain2", help="Name of second strain if mapping to 2 different strains")
 parser$add_argument("--parallel", action='store_true', help="Enable parallel processing")
 
 args <- parser$parse_args()
+if (!is.finite(args$indel_filter) || args$indel_filter < 0 || args$indel_filter > 1) {
+  stop("--indel_filter must be a fraction between 0 and 1 (0.10 means 10% INDEL distance)")
+}
 
 # Required packages
 library(limma)
@@ -259,6 +262,7 @@ if (!args$no_reference) {
 	for (p in seq_along(path_to_refseq)) {
   		refasta <- read.fasta(path_to_refseq[p])
   		refseq <- toupper(sapply(refasta,c2s))
+      if (p == 1) primary_reference_lengths <- nchar(refseq)
   		amplicons <- as.character(names(refseq))
   		# Alignment with RefSet
 		align_df <- seq_align(seqs_df = seqs_df, path_to_ref = path_to_refseq[p], overlap = TRUE, parallel = args$parallel)
@@ -296,29 +300,22 @@ if (!args$no_reference) {
 	}
 
   if (is.null(args$snv_filter) || !file.exists(args$snv_filter)) {
-    stop("A readable --snv_filter table with id, SNP, and INDEL columns is required")
+    stop("A readable --snv_filter table with id and SNP columns is required")
   }
   VariantCounts <- fread(args$snv_filter, data.table = FALSE)
-  required_filter_columns <- c("id", "SNP", "INDEL")
+  required_filter_columns <- c("id", "SNP")
   missing_filter_columns <- setdiff(required_filter_columns, colnames(VariantCounts))
   if (length(missing_filter_columns) > 0) {
-    stop(paste("SNV/INDEL filter table is missing columns:", paste(missing_filter_columns, collapse = ", ")))
+    stop(paste("SNV filter table is missing columns:", paste(missing_filter_columns, collapse = ", ")))
   }
   VariantCounts$id <- trimws(as.character(VariantCounts$id))
   VariantCounts$SNP <- suppressWarnings(as.numeric(VariantCounts$SNP))
-  VariantCounts$INDEL <- suppressWarnings(as.numeric(VariantCounts$INDEL))
   if (any(VariantCounts$id == "") || anyDuplicated(VariantCounts$id) ||
-      any(!is.finite(VariantCounts$SNP)) || any(!is.finite(VariantCounts$INDEL)) ||
-      any(VariantCounts$SNP < 0) || any(VariantCounts$INDEL < 0)) {
-    stop("SNV/INDEL filter table IDs must be unique and thresholds must be finite non-negative values")
+      any(!is.finite(VariantCounts$SNP)) || any(VariantCounts$SNP < 0)) {
+    stop("SNV filter table IDs must be unique and thresholds must be finite non-negative values")
   }
-
-  indel_override <- NULL
-  if (!is.null(args$indel_filter) && nzchar(trimws(args$indel_filter))) {
-    indel_override <- suppressWarnings(as.numeric(args$indel_filter))
-    if (length(indel_override) != 1 || !is.finite(indel_override) || indel_override < 0 || indel_override != floor(indel_override)) {
-      stop("--indel_filter must be a non-negative absolute INDEL count; fractional length-ratio thresholds are not supported")
-    }
+  if ("INDEL" %in% colnames(VariantCounts)) {
+    warning("The legacy INDEL column is ignored; --indel_filter sets a fraction of reference length")
   }
 
   primary_strain <- strains[1]
@@ -329,6 +326,10 @@ if (!args$no_reference) {
   asvdf[[paste0("best_refid_", primary_strain)]] <- as.character(asvdf[[reference_column]])
   asvdf$snv_threshold <- NA_real_
   asvdf$indel_threshold <- NA_real_
+  asvdf$reference_length <- NA_real_
+  asvdf$indel_fraction <- NA_real_
+  asvdf$indel_fraction_threshold <- args$indel_filter
+  asvdf$indel_filter_rule <- "inserted_deleted_bases_over_reference_length"
   asvdf$snv_filter <- "FAIL"
   asvdf$indel_filter <- "FAIL"
   asvdf$mapping_status <- "UNMAPPED"
@@ -341,11 +342,21 @@ if (!args$no_reference) {
       next
     }
     snv_threshold <- VariantCounts$SNP[threshold_index]
-    indel_threshold <- if (is.null(indel_override)) VariantCounts$INDEL[threshold_index] else indel_override
+    reference_length <- unname(primary_reference_lengths[refid])
+    if (length(reference_length) != 1 || !is.finite(reference_length) || reference_length <= 0) {
+      stop(paste("Missing or invalid reference length for", refid))
+    }
+    # SIMPLseq describes exclusion above 10% INDEL distance to 3D7.
+    # Count all inserted/deleted bases; opposing events do not cancel.
+    # https://doi.org/10.1186/s12936-026-05796-1
+    indel_fraction <- asvdf[[indel_distance_column]][i] / reference_length
+    indel_threshold <- args$indel_filter * reference_length
     asvdf$snv_threshold[i] <- snv_threshold
     asvdf$indel_threshold[i] <- indel_threshold
+    asvdf$reference_length[i] <- reference_length
+    asvdf$indel_fraction[i] <- indel_fraction
     asvdf$snv_filter[i] <- if (asvdf[[snv_distance_column]][i] <= snv_threshold) "PASS" else "FAIL"
-    asvdf$indel_filter[i] <- if (asvdf[[indel_distance_column]][i] <= indel_threshold) "PASS" else "FAIL"
+    asvdf$indel_filter[i] <- if (indel_fraction <= args$indel_filter) "PASS" else "FAIL"
     if (asvdf[[tie_column]][i] > 1) {
       asvdf$mapping_status[i] <- "AMBIGUOUS"
     } else if (asvdf$snv_filter[i] == "PASS" && asvdf$indel_filter[i] == "PASS") {

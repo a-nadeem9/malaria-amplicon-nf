@@ -4834,6 +4834,31 @@ function bindDciferEvents() {
 // Init
 // ---------------------------------------------------------------------------
 
+async function buildClonalTurnover() {
+  const button = $("#clonal-build");
+  button.disabled = true;
+  text($("#clonal-message"), "Calculating observed clonal turnover…");
+  $("#clonal-downloads").replaceChildren();
+  $("#clonal-table").hidden = true;
+  try {
+    const payload = await postJson("/api/clonal/build", {
+      outdir: activeOutdir || $("#results-outdir")?.value || currentRunOutdir(),
+      mode: $("#clonal-mode").value
+    });
+    const s = payload.summary;
+    text($("#clonal-message"), `${s.participants} participants; ${s.eligible_participant_locus_rows} participant–locus groups with repeated genotypes. ${s.acquisitions} observed acquisitions and ${s.clearances} clearances. Single-visit rows are excluded from rate summaries. ${s.excluded_calls} undated or incomplete calls excluded. Preview: first 100 rows.`);
+    const names = {turnover_metrics: "Turnover table", allele_lifetimes: "Allele first/last visits", adjacent_visit_transitions: "Adjacent-visit changes", host_time_summary: "Sampling intervals", excluded_calls: "Excluded calls", summary: "Method and provenance"};
+    for (const [key, href] of Object.entries(payload.downloads)) {
+      const a = document.createElement("a"); a.href = href; a.textContent = names[key] || key;
+      a.className = "button"; $("#clonal-downloads").append(a);
+    }
+    $("#clonal-table tbody").innerHTML = payload.rows.map(r => `<tr><td>${escapeHtml(r.participant_id)}</td><td>${escapeHtml(r.locus)}</td><td>${r.genotyped_visits}</td><td>${r.acquisitions}</td><td>${r.clearances}</td><td>${r.eligible_longitudinal ? Number(r.turnover_per_interval).toFixed(3) : "Single visit"}</td></tr>`).join("");
+    $("#clonal-table").hidden = false;
+  } catch (error) {
+    text($("#clonal-message"), error.message || "Clonal analysis could not be completed.");
+  } finally { button.disabled = false; }
+}
+
 async function init() {
   const startupParams = new URLSearchParams(window.location.search);
   const startupOutdir = String(startupParams.get("out") || "").trim();
@@ -4843,6 +4868,7 @@ async function init() {
   bindPlotWheelScrolling();
   bindDinemitesEvents();
   bindDciferEvents();
+  $("#clonal-build")?.addEventListener("click", buildClonalTurnover);
   selectTab("inputs");
   setScanReady(false);
   updateScanButtonAvailability();

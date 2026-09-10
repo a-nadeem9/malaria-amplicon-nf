@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-VERSION="${SIMPLSEQ_VERSION:-v1.0.3}"
+VERSION="${SIMPLSEQ_VERSION:-v2.2.27}"
 TARBALL="runtime.tar.gz"
 CHECKSUMS="SHA256SUMS.txt"
 DEFAULT_BASE_URL="https://github.com/a-nadeem9/malaria-amplicon-nf/releases/download/${VERSION}"
@@ -218,16 +218,13 @@ fi
 
 if [[ -d "$ENV_DIR/bin/cmdstan" ]]; then
   export CMDSTAN="$ENV_DIR/bin/cmdstan"
+  # Conda clang 19's versioned libLTO filename is rejected by recent Apple
+  # linkers. Configure after the lock install, which resets make/local.
+  if [[ "$UNAME_S" == "Darwin" && "$CONDA_PLATFORM" == "osx-64" ]] \
+      && /usr/bin/clang++ --version >/dev/null 2>&1; then
+    printf '\nCXX=/usr/bin/clang++ -arch x86_64\n' >> "$CMDSTAN/make/local"
+  fi
 fi
-
-# Explicit runtime locks can lag behind environment.yml. Excel metadata is an
-# advertised input format, so enforce its Python dependency before marking the
-# managed runtime ready.
-if ! "$ENV_DIR/bin/python" -c 'import openpyxl' >/dev/null 2>&1; then
-  say "Installing Excel metadata support"
-  "$ENV_DIR/bin/python" -m pip install "openpyxl>=3.1,<4"
-fi
-"$ENV_DIR/bin/python" -c 'import openpyxl'
 
 "$ENV_DIR/bin/python" -m pip install --no-deps --force-reinstall "$STAGED_VERSION_DIR"
 say "Installing downstream R analysis packages"
@@ -258,16 +255,8 @@ if ! dinemites_models_ready; then
   curl -fsSL \
     "https://codeload.github.com/WillNickols/dinemites/tar.gz/${DINEMITES_SHA}" \
     -o "$DINEMITES_TARBALL"
-  DINEMITES_LDFLAGS="${LDFLAGS:-}"
-  if [[ "$UNAME_S" == "Darwin" && "$UNAME_M" == "arm64" && "$CONDA_PLATFORM" == "osx-64" ]]; then
-    # Conda's Intel Clang 19 passes a versioned libLTO path that the macOS 26
-    # linker rejects. The DINEMITES models do not use LTO, so select the
-    # compatible non-plugin linker path when building them under Rosetta.
-    DINEMITES_LDFLAGS="${DINEMITES_LDFLAGS:+${DINEMITES_LDFLAGS} }-mlinker-version=0"
-  fi
   PATH="$ENV_DIR/bin:$PATH" \
   R_LIBS_USER="$ENV_DIR/lib/R/library" \
-  LDFLAGS="$DINEMITES_LDFLAGS" \
     "$ENV_DIR/bin/R" CMD INSTALL \
       --library="$ENV_DIR/lib/R/library" \
       "$DINEMITES_TARBALL"

@@ -1,6 +1,6 @@
 {
   "name": "malaria-amplicon-nf",
-  "version": "1.0.3",
+  "version": "2.2.27",
   "private": true,
   "type": "module",
   "scripts": {

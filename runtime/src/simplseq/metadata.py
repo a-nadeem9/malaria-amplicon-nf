@@ -531,7 +531,10 @@ def inspect_metadata(
         parsed_date = parse_date(raw_date, date_order)
         if _display_value(raw_date) and not parsed_date:
             ambiguous_date_rows.append(source_row)
-        month = month_from_date(parsed_date) or (normalize_month(row.get(month_col)) if month_col else "")
+        # A scheduled visit label can differ from its actual collection month
+        # (for example, a March visit collected on April 1). Preserve an explicit
+        # visit month for filename matching while retaining the real date.
+        month = (normalize_month(row.get(month_col)) if month_col else "") or month_from_date(parsed_date)
         if not month:
             catalog.issues.append(MetadataIssue("warning", "visit_month_missing", f"No usable visit month for participant {participant}.", source_row))
             continue
@@ -637,7 +640,26 @@ def _match_record(
     if len(status_matches) == 1:
         return status_matches[0], "matched"
     signatures = {(record.collection_date, tuple(sorted(record.values.items()))) for record in candidates}
-    return (candidates[0], "matched") if len(signatures) == 1 else (None, "ambiguous")
+    if len(signatures) == 1:
+        return candidates[0], "matched"
+    dates = {record.collection_date for record in candidates}
+    if len(dates) == 1 and "" not in dates:
+        # Conflicting clinical annotations need not erase an agreed exact date.
+        # Carry only unanimous fields; disagreement (including PCR) stays unknown.
+        keys = set().union(*(record.values for record in candidates))
+        values = {}
+        for key in keys:
+            observations = {record.values.get(key, "") for record in candidates}
+            values[key] = next(iter(observations)) if len(observations) == 1 else ""
+        return MetadataRecord(
+            participant_id=candidates[0].participant_id,
+            month=candidates[0].month,
+            collection_date=candidates[0].collection_date,
+            date_source="consensus_exact_date",
+            source="; ".join(sorted({record.source for record in candidates})),
+            values=values,
+        ), "ambiguous"
+    return None, "ambiguous"
 
 
 def enrich_rows_with_metadata(

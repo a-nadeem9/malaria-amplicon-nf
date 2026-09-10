@@ -27,6 +27,7 @@ from waitress import serve
 
 from simplseq import __version__
 from simplseq.analysis_jobs import launch_job, reconcile_state
+from simplseq.clonal import export_clonal_dynamics
 from simplseq.job_state import process_matches, read_json, terminate_process_group, write_json
 from simplseq.pathutils import user_path
 from simplseq.progress import read_events
@@ -2716,6 +2717,38 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
                 if safe_is_file(sensitivity) else "",
             },
         }
+
+    @app.post("/api/clonal/build")
+    def api_clonal_build():
+        data = request.get_json(silent=True) or {}
+        outdir = resolve_app_path(workspace, data.get("outdir"), "results")
+        mode = downstream_analysis_mode(data.get("mode"))
+        source = analysis_long_path(outdir, mode)
+        if not source.is_file():
+            return json_error("Prepare the selected allele input in Quality control first.", 400)
+        try:
+            payload = export_clonal_dynamics(source, outdir / "clonal" / analysis_stem(mode), mode)
+        except (ValueError, OSError) as exc:
+            return json_error(str(exc), 400)
+        payload["downloads"] = {
+            name: url_for("download_clonal", file_key=name, out=str(outdir), mode=mode)
+            for name in [*payload["summary"]["files"], "summary"]
+        }
+        return jsonify({"ok": True, **payload})
+
+    @app.get("/download/clonal/<file_key>")
+    def download_clonal(file_key: str):
+        allowed = {"host_time_summary", "allele_lifetimes", "turnover_metrics",
+                   "adjacent_visit_transitions", "excluded_calls", "summary"}
+        if file_key not in allowed:
+            abort(404)
+        outdir = resolve_app_path(workspace, request.args.get("out"), "results")
+        mode = downstream_analysis_mode(request.args.get("mode"))
+        suffix = ".json" if file_key == "summary" else ".tsv"
+        path = outdir / "clonal" / analysis_stem(mode) / (file_key + suffix)
+        if not path.is_file():
+            abort(404)
+        return send_file(path, as_attachment=True)
 
     @app.get("/api/analysis-table/status")
     def api_analysis_table_status():

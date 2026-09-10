@@ -639,6 +639,26 @@
             </div>
             <div id="analysis-input-message" class="inline-message"></div>
           </section>
+          <div class="qc-guide-stage">
+            <span class="qc-guide-marker" aria-hidden="true"></span>
+            <strong>Observe</strong>
+          </div>
+          <section class="analysis-input-panel qc-section qc-guided-body" aria-labelledby="clonal-heading">
+            <h2 id="clonal-heading">Observed clonal turnover</h2>
+            <p>Summarize first and last observed alleles for each participant and locus. Rates use intervals between genotyped visits. Missing genotypes do not count as allele absence.</p>
+            <label for="clonal-mode">Allele definition</label>
+            <select id="clonal-mode" class="scientific-select">
+              <option value="primary">Exact CIGAR alleles</option>
+              <option value="cdhit98">CD-HIT 98.9% clusters</option>
+            </select>
+            <div class="button-row"><button id="clonal-build" type="button">Calculate clonal turnover</button></div>
+            <p id="clonal-message" class="inline-message" aria-live="polite"></p>
+            <div id="clonal-downloads" class="button-row"></div>
+            <div class="table-wrap"><table id="clonal-table" hidden>
+              <thead><tr><th>Participant</th><th>Locus</th><th>Visits</th><th>Acquisitions</th><th>Clearances</th><th>Turnover / interval</th></tr></thead>
+              <tbody></tbody>
+            </table></div>
+          </section>
         </div>
       </section>
 

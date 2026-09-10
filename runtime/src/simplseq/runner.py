@@ -194,7 +194,7 @@ def check_environment(
     nextflow = next((item for item in nextflow_candidates if item and Path(item).exists()), "")
     checks.append({"name": "Nextflow", "status": "ok" if nextflow else "missing", "detail": nextflow or "nextflow not found"})
     probe_jobs = [
-        ("Python packages", ["python", "-c", "import pandas; print('pandas ok')"], 120, None),
+        ("Python packages", ["python", "-c", "import pandas, openpyxl; print('pandas and Excel metadata support ok')"], 120, None),
         ("Java works", ["java", "-version"], 30, None),
         ("Nextflow works", ["nextflow", "-version"], 30, None),
         (

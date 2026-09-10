@@ -273,7 +273,7 @@ def analysis_parameters(profile: str = "local") -> dict[str, object]:
         "dada2_multithread": "1",
         "dada2_seed": "1",
         "strict_min_asv_length": 100,
-        "indel_filter": "0.10",
+        "indel_filter": "per_locus_snv_filters",
         "cigar_homopolymer_mask_length": 5,
         "cigar_min_total_reads": 1,
         "cigar_min_samples": 1,

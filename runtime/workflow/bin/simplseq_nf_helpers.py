@@ -847,7 +847,7 @@ def summarize_asv_filter_steps(
         current &= df["indel_filter"].astype(str).str.upper().eq("PASS")
         steps.append({
             "step": "INDEL-distance filter",
-            "requirement": "Keep ASVs marked PASS by the recorded INDEL rule; the default allows at most 10% inserted/deleted bases relative to reference length.",
+            "requirement": "Keep ASVs within the configured locus-specific inserted/deleted-base limit.",
             "count": int(current.sum()),
         })
 

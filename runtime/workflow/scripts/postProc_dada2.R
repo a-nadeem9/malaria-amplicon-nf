@@ -17,8 +17,8 @@ parser$add_argument("-o", "--output",
 parser$add_argument("--fasta", action='store_true', help="Write ASV sequences separately into fasta file")
 parser$add_argument("-snv", "--snv_filter", 
                     help="Path to file for filtering ASVs based on edit distance")
-parser$add_argument("--indel_filter", 
-                    help="Optional absolute INDEL-distance override. By default, use the INDEL column in --snv_filter")
+parser$add_argument("--indel_filter", default="0.90",
+                    help="Broad ASV/reference length-ratio cutoff: accept cutoff <= ratio <= 1/cutoff (default: 0.90)")
 parser$add_argument("--strain", default="3D7", help="Name of Specific strain to map to. Defaults to 3D7")
 parser$add_argument("--strain2", help="Name of second strain if mapping to 2 different strains")
 parser$add_argument("--parallel", action='store_true', help="Enable parallel processing")
@@ -37,6 +37,7 @@ script_arg <- grep("^--file=", commandArgs(trailingOnly = FALSE), value = TRUE)
 script_path <- gsub("~+~", " ", sub("^--file=", "", script_arg[[1]]), fixed = TRUE)
 script_dir <- dirname(normalizePath(script_path))
 source(file.path(script_dir, "lib", "workflow_common.R"))
+source(file.path(script_dir, "lib", "asv_filters.R"))
 
 get_alignment_fun <- function(fun_name) {
   for (namespace in c("pwalign", "Biostrings", "BiocGenerics")) {
@@ -260,6 +261,9 @@ if (!args$no_reference) {
   		refasta <- read.fasta(path_to_refseq[p])
   		refseq <- toupper(sapply(refasta,c2s))
   		amplicons <- as.character(names(refseq))
+      if (p == 1L) {
+        primary_reference_lengths <- setNames(nchar(refseq), names(refseq))
+      }
   		# Alignment with RefSet
 		align_df <- seq_align(seqs_df = seqs_df, path_to_ref = path_to_refseq[p], overlap = TRUE, parallel = args$parallel)
 		align_df$refid <- as.character(align_df$refid)
@@ -296,63 +300,13 @@ if (!args$no_reference) {
 	}
 
   if (is.null(args$snv_filter) || !file.exists(args$snv_filter)) {
-    stop("A readable --snv_filter table with id, SNP, and INDEL columns is required")
+    stop("A readable --snv_filter table with id and SNP columns is required")
   }
   VariantCounts <- fread(args$snv_filter, data.table = FALSE)
-  required_filter_columns <- c("id", "SNP", "INDEL")
-  missing_filter_columns <- setdiff(required_filter_columns, colnames(VariantCounts))
-  if (length(missing_filter_columns) > 0) {
-    stop(paste("SNV/INDEL filter table is missing columns:", paste(missing_filter_columns, collapse = ", ")))
-  }
-  VariantCounts$id <- trimws(as.character(VariantCounts$id))
-  VariantCounts$SNP <- suppressWarnings(as.numeric(VariantCounts$SNP))
-  VariantCounts$INDEL <- suppressWarnings(as.numeric(VariantCounts$INDEL))
-  if (any(VariantCounts$id == "") || anyDuplicated(VariantCounts$id) ||
-      any(!is.finite(VariantCounts$SNP)) || any(!is.finite(VariantCounts$INDEL)) ||
-      any(VariantCounts$SNP < 0) || any(VariantCounts$INDEL < 0)) {
-    stop("SNV/INDEL filter table IDs must be unique and thresholds must be finite non-negative values")
-  }
-
-  indel_override <- NULL
-  if (!is.null(args$indel_filter) && nzchar(trimws(args$indel_filter))) {
-    indel_override <- suppressWarnings(as.numeric(args$indel_filter))
-    if (length(indel_override) != 1 || !is.finite(indel_override) || indel_override < 0 || indel_override != floor(indel_override)) {
-      stop("--indel_filter must be a non-negative absolute INDEL count; fractional length-ratio thresholds are not supported")
-    }
-  }
-
-  primary_strain <- strains[1]
-  reference_column <- paste0("refid_", primary_strain)
-  snv_distance_column <- paste0("snv_dist_from_", primary_strain)
-  indel_distance_column <- paste0("indel_dist_from_", primary_strain)
-  tie_column <- paste0("best_reference_ties_", primary_strain)
-  asvdf[[paste0("best_refid_", primary_strain)]] <- as.character(asvdf[[reference_column]])
-  asvdf$snv_threshold <- NA_real_
-  asvdf$indel_threshold <- NA_real_
-  asvdf$snv_filter <- "FAIL"
-  asvdf$indel_filter <- "FAIL"
-  asvdf$mapping_status <- "UNMAPPED"
-
-  for (i in seq_len(nrow(asvdf))) {
-    refid <- as.character(asvdf[[reference_column]][i])
-    threshold_index <- match(refid, VariantCounts$id)
-    if (is.na(threshold_index)) {
-      asvdf$mapping_status[i] <- "MISSING_THRESHOLD"
-      next
-    }
-    snv_threshold <- VariantCounts$SNP[threshold_index]
-    indel_threshold <- if (is.null(indel_override)) VariantCounts$INDEL[threshold_index] else indel_override
-    asvdf$snv_threshold[i] <- snv_threshold
-    asvdf$indel_threshold[i] <- indel_threshold
-    asvdf$snv_filter[i] <- if (asvdf[[snv_distance_column]][i] <= snv_threshold) "PASS" else "FAIL"
-    asvdf$indel_filter[i] <- if (asvdf[[indel_distance_column]][i] <= indel_threshold) "PASS" else "FAIL"
-    if (asvdf[[tie_column]][i] > 1) {
-      asvdf$mapping_status[i] <- "AMBIGUOUS"
-    } else if (asvdf$snv_filter[i] == "PASS" && asvdf$indel_filter[i] == "PASS") {
-      asvdf$mapping_status[i] <- "MAPPED"
-    }
-  }
-  asvdf[[reference_column]][asvdf$mapping_status != "MAPPED"] <- NA_character_
+  asvdf <- apply_reference_filters(
+    asvdf, VariantCounts, primary_reference_lengths,
+    strain = strains[1], length_ratio_min = args$indel_filter
+  )
 }
 
 if (!is.null(args$bimera)) {

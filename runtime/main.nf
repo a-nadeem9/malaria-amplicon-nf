@@ -233,7 +233,8 @@ process POSTPROCESS_DADA2 {
       -o ASV_mapped_table.tsv \
       --fasta \
       --parallel \
-      --snv_filter "${snv_filters}"
+      --snv_filter "${snv_filters}" \
+      --indel_filter "${params.indel_filter}"
     echo "[SIMPLseq/Nextflow] \$(date) finished postprocess_dada2"
   } 2>&1 | tee postprocess_dada2.log
   python -m simplseq.progress emit --file "${params.outdir}/progress.jsonl" --stage asv_mapping --status complete

@@ -206,6 +206,7 @@ process POSTPROCESS_DADA2 {
   memory params.postprocess_memory
   time '4h'
   publishDir "${params.outdir}/run_dada2/intermediate", mode: 'copy', overwrite: true, pattern: 'ASVSeqs.fasta'
+  publishDir "${params.outdir}/qc", mode: 'copy', overwrite: true, pattern: 'ASV_mapping_audit.tsv'
   publishDir "${params.outdir}/logs", mode: 'copy', overwrite: true, pattern: 'postprocess_dada2.log'
 
   input:
@@ -216,7 +217,9 @@ process POSTPROCESS_DADA2 {
   path samples
 
   output:
-  path 'ASV_mapped_table.tsv', emit: mapped
+  // Keep the full audit distinct from PREPARE_STAGE3's filtered output so that
+  // writing the latter cannot follow a staged symlink back into this file.
+  path 'ASV_mapping_audit.tsv', emit: mapped
   path 'ASVSeqs.fasta', emit: fasta
   path 'postprocess_dada2.log', emit: log
 
@@ -230,7 +233,7 @@ process POSTPROCESS_DADA2 {
       --samples "${samples}" \
       -ref "${reference}" \
       -b "${bimera}" \
-      -o ASV_mapped_table.tsv \
+      -o ASV_mapping_audit.tsv \
       --fasta \
       --parallel \
       --snv_filter "${snv_filters}" \

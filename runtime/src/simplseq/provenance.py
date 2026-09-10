@@ -28,6 +28,7 @@ PINNED_PARAMETER_KEYS = [
     "max_consist",
     "omega_a",
     "just_concatenate",
+    "dada2_pool",
     "dada2_randomize",
     "dada2_multithread",
     "dada2_seed",

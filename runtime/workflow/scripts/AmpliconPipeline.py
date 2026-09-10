@@ -151,6 +151,7 @@ def main():
 	parser.add_argument('--omegaA', help="p-value for the partitioning algorithm (dada2 argument)")
 	parser.add_argument('--justConcatenate', help="whether reads should be concatenated with N's during merge (dada2 argument)")
 	parser.add_argument('--saveRdata', help="Optionally save dada2 part of this run as Rdata object")
+	parser.add_argument('--dada2_pool', choices=('0', '1'), help="Pool DADA2 inference across samples: 1 yes (default), 0 no")
 	parser.add_argument('--dada2_randomize', help="DADA2 randomize argument: 1/TRUE or 0/FALSE")
 	parser.add_argument('--dada2_multithread', help="DADA2 multithread argument: 1/TRUE or 0/FALSE")
 	parser.add_argument('--dada2_seed', help="Optional random seed passed to runDADA2.R")
@@ -380,6 +381,13 @@ def main():
 			justConcatenate = ''
 			print('NOTE : JSON inputs not provided and --justConcatenate argument not found. Default will be used depending on Class')
 
+		if args.dada2_pool is not None:
+			dada2_pool = args.dada2_pool
+		else:
+			dada2_pool = str(jsoninputs.get('dada2_pool', '1'))
+		if dada2_pool not in ('0', '1'):
+			parser.error("dada2_pool must be 0 or 1")
+
 		if args.dada2_randomize is not None:
 			print('NOTE : --dada2_randomize argument found. This overrides any json input provided')
 			dada2_randomize = args.dada2_randomize
@@ -406,6 +414,7 @@ def main():
 
 		dada2_repro_args = []
 		dada2_repro_args.extend(['--threads', str(max_parallel_workers)])
+		dada2_repro_args.extend(['--pool', dada2_pool])
 		if str(dada2_randomize) != '':
 			dada2_repro_args.extend(['--randomize', str(dada2_randomize)])
 		if str(dada2_multithread) != '':

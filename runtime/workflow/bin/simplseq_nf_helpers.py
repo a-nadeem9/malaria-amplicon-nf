@@ -244,6 +244,7 @@ def cmd_write_pipeline_json(args: argparse.Namespace) -> int:
         "omegaA": args.omega_a,
         "justConcatenate": args.just_concatenate,
         "saveRdata": args.save_rdata,
+        "dada2_pool": args.dada2_pool,
         "dada2_randomize": args.dada2_randomize,
         "dada2_multithread": args.dada2_multithread,
         "dada2_seed": args.dada2_seed,
@@ -1432,6 +1433,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--omega-a", required=True)
     p.add_argument("--just-concatenate", required=True)
     p.add_argument("--save-rdata", default="")
+    p.add_argument("--dada2-pool", choices=("0", "1"), default="1")
     p.add_argument("--dada2-randomize", default="")
     p.add_argument("--dada2-multithread", default="")
     p.add_argument("--dada2-seed", default="")

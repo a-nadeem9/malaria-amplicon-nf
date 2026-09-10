@@ -27,6 +27,8 @@ parser$add_argument("-wA", "--omega_a", type="double",
                     help="P-value threshold in sample inference for forming a new partition")
 parser$add_argument("-jC", "--justConcatenate", type="integer",
                     help="Specify whether ASVs need to be concatinated with Ns instead of merging")
+parser$add_argument("--pool", type="integer", choices=c(0L, 1L), default=1L,
+                    help="Pool inference across samples: 1 yes (default), 0 no")
 parser$add_argument("--randomize", type="integer",
                     help="Use randomized read order during error learning: 1 yes, 0 no (default: 1)")
 parser$add_argument("--multithread", type="integer",
@@ -69,6 +71,7 @@ if (length(missing_fastqs) > 0) {
 # (Universal) Parameters
 randomize=TRUE
 selfConsist=TRUE
+pool <- as.logical(args$pool)
 filter = TRUE
 multithread=TRUE
 matchIDs <- args$matchIDs
@@ -207,6 +210,7 @@ parameter_df <- data.frame(maxEE=maxEE,
 		max_consist=max_consist,
 		randomize=randomize,
 		selfConsist=selfConsist,
+		pool=pool,
 		multithread=multithread,
 		OMEGA_A=omega_a,
   		justConcatenate=justConcatenate)
@@ -285,9 +289,9 @@ names(derepRs) <- sample.names
 
 #Run core DADA2 algorithm
 print("starting dada2 for forward reads...")
-dadaFs <- dada(derepFs, err=errF, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a)
+dadaFs <- dada(derepFs, err=errF, pool=pool, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a)
 print("starting dada2 for reverse reads...")
-dadaRs <- dada(derepRs, err=errR, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a)
+dadaRs <- dada(derepRs, err=errR, pool=pool, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a)
 
 # Merge reads
 print("merging paird ends...")

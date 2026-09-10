@@ -74,6 +74,7 @@ process WRITE_PIPELINE_JSON {
     --omega-a ${params.omega_a} \
     --just-concatenate ${params.just_concatenate} \
     --save-rdata ${params.save_rdata} \
+    --dada2-pool "${params.dada2_pool}" \
     ${dada2_randomize_arg} \
     ${dada2_multithread_arg} \
     ${dada2_seed_arg} \

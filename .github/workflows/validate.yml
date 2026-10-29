@@ -1,0 +1,88 @@
+name: Validate and build installers
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Workflow regression tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - run: npm ci
+      - name: Verify and bundle desktop sources
+        run: |
+          npm run verify:repo
+          npm run build
+          node --check runtime/gui/static/js/app.js
+          bash -n runtime/install-simplseq.sh
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: runtime/locks/linux-64-explicit.txt
+          environment-name: simplseq-test
+          cache-environment: true
+      - name: Install downstream test dependency
+        shell: bash -el {0}
+        run: Rscript -e 'if (!requireNamespace("dcifer", quietly=TRUE)) install.packages("dcifer", repos="https://cloud.r-project.org")'
+      - name: Test Python, R, and MUSCLE integration
+        shell: bash -el {0}
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          export PYTHONPATH="$PWD/runtime/src"
+          export SIMPLSEQ_PROJECT_ROOT="$PWD/runtime"
+          export SIMPLSEQ_ENV_DIR="$CONDA_PREFIX"
+          python -m unittest discover -s tests -v
+          Rscript tests/test_asv_filters.R "$PWD/runtime"
+
+  build:
+    name: ${{ matrix.platform }} installer
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macOS-Apple-Silicon
+            runner: macos-15
+            target: aarch64-apple-darwin
+            bundle: dmg/*.dmg
+          - platform: Windows-x64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundle: nsis/*-setup.exe
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: npm ci
+      - name: Build desktop installer
+        run: npm run tauri:build -- --target ${{ matrix.target }}
+      - name: Check macOS bundle signature
+        if: runner.os == 'macOS'
+        run: codesign --verify --deep --strict --verbose=4 src-tauri/target/${{ matrix.target }}/release/bundle/macos/malaria-amplicon-nf.app
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SIMPLseq-${{ matrix.platform }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/${{ matrix.bundle }}
+          if-no-files-found: error
+          retention-days: 14

@@ -82,7 +82,7 @@ dir.create(args$outdir, showWarnings = FALSE, recursive = TRUE)
 plots_dir <- file.path(args$outdir, "dcifer_plots")
 dir.create(plots_dir, showWarnings = FALSE, recursive = TRUE)
 
-dcifer_input <- read.delim(args$input, check.names = FALSE, stringsAsFactors = FALSE)
+dcifer_input <- read.delim(args$input, check.names = FALSE, stringsAsFactors = FALSE, colClasses = "character")
 required_cols <- c("sample_id", "locus", "allele")
 require_columns(dcifer_input, required_cols, "dcifer/run")
 if (nrow(dcifer_input) == 0) {
@@ -90,7 +90,7 @@ if (nrow(dcifer_input) == 0) {
 }
 
 if (!"participant_id" %in% colnames(dcifer_input)) {
-  dcifer_input$participant_id <- dcifer_input$sample_id
+  dcifer_input$participant_id <- ""
 }
 if (!"collection_date" %in% colnames(dcifer_input)) {
   dcifer_input$collection_date <- ""

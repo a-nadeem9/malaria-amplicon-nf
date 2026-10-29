@@ -72,7 +72,7 @@
         <header class="workspace-heading">
           <div>
             <h1>Prepare sequencing data</h1>
-            <p>Choose a FASTQ folder, add visit metadata if you have it, then scan the files.</p>
+            <p>Choose a FASTQ folder, add sample metadata if you have it, then scan the files.</p>
           </div>
         </header>
 
@@ -98,13 +98,13 @@
               <details class="metadata-options metadata-workspace">
                 <summary>
                   <span>
-                    <strong>Add visit metadata</strong>
-                    <small>Recommended for longitudinal analysis</small>
+                    <strong>Add sample metadata</strong>
+                    <small>Match sample IDs; optionally add visit information</small>
                   </span>
                   <em>Optional</em>
                 </summary>
                 <div class="details-content">
-                  <p class="metadata-intro">Use CSV, TSV, or Excel to include visits with no retained genotype. The app will match familiar column names automatically.</p>
+                  <p class="metadata-intro">Use CSV, TSV, or Excel to describe lab samples or clinical visits. Match by sample ID or FASTQ filename. Participant IDs and collection dates are needed only for longitudinal analysis.</p>
 
                   <div class="metadata-file-heading">
                     <label for="metadata-path">Metadata file</label>
@@ -158,7 +158,11 @@
                       <div class="metadata-review-body">
                         <div class="metadata-contract__required">
                           <div class="metadata-map-field">
-                            <label for="metadata-column-participant">Participant ID <span>Required</span></label>
+                            <label for="metadata-column-sample">Sample ID or FASTQ filename</label>
+                            <select id="metadata-column-sample" data-metadata-column="sample_id"></select>
+                          </div>
+                          <div class="metadata-map-field">
+                            <label for="metadata-column-participant">Participant ID <span>Optional</span></label>
                             <select id="metadata-column-participant" data-metadata-column="participant_id"></select>
                           </div>
                           <div class="metadata-map-field">
@@ -174,7 +178,26 @@
                             <select id="metadata-column-pcr" data-metadata-column="metadata_pcr"></select>
                           </div>
                         </div>
-                        <p class="metadata-contract__rule">Participant ID and either Visit date or Visit month are required. Detection results complete the visit calendar.</p>
+                        <p class="metadata-contract__rule">Map a sample ID column for laboratory samples, or a participant ID column for study metadata. Dates are optional for sequencing and Dcifer. DINEMITES requires participant IDs and visit dates.</p>
+
+                        <details class="metadata-covariates">
+                          <summary>Optional sample details</summary>
+                          <div class="metadata-contract__optional">
+                            <div class="metadata-map-field">
+                              <label for="metadata-column-biological">Biological sample ID</label>
+                              <select id="metadata-column-biological" data-metadata-column="biological_sample_id"></select>
+                            </div>
+                            <div class="metadata-map-field">
+                              <label for="metadata-column-type">Sample type</label>
+                              <select id="metadata-column-type" data-metadata-column="sample_type"></select>
+                            </div>
+                            <div class="metadata-map-field">
+                              <label for="metadata-column-replicate">Technical replicate</label>
+                              <select id="metadata-column-replicate" data-metadata-column="replicate"></select>
+                            </div>
+                          </div>
+                          <p class="field-help">Use sample, negative, positive, or control for sample type. Give technical replicates the same biological sample ID and distinct replicate labels.</p>
+                        </details>
 
                         <details class="metadata-covariates">
                           <summary>Optional study fields</summary>
@@ -533,7 +556,7 @@
           <section class="analysis-input-panel qc-section qc-define-stage">
             <div class="qc-section-heading qc-section-heading--shared">
               <div>
-                <h2>Filter participant visits</h2>
+                <h2>Filter sample alleles</h2>
                 <p>Applied once to both downstream analyses.</p>
               </div>
             </div>

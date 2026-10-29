@@ -1,6 +1,6 @@
 [package]
 name = "malaria_amplicon_nf_desktop"
-version = "2.2.27"
+version = "2.2.28"
 description = "Desktop launcher for the malaria-amplicon-nf Nextflow app."
 authors = ["malaria-amplicon-nf"]
 edition = "2021"

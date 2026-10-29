@@ -9,10 +9,10 @@ from typing import Iterable
 SIMPLSEQ_PANEL = {
     "CSP": {"csp", "pf3d70304600", "0304600"},
     "TRAP": {"trap", "pf3d71335900", "1335900"},
-    "WDCP": {"wdcp", "pf3d71410300", "1410300"},
+    "WDCP": {"wdcp", "wd", "pf3d71410300", "1410300"},
     "KELT": {"kelt", "pf3d71475900", "1475900"},
     "SERA8": {"sera8", "pf3d70207300", "0207300"},
-    "SURFIN4.2": {"surfin42", "surfin4.2", "pf3d70424400", "0424400"},
+    "SURFIN4.2": {"surfin", "surfin42", "surfin4.2", "pf3d70424400", "0424400"},
 }
 
 

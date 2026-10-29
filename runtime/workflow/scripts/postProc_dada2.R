@@ -170,9 +170,7 @@ if (!is.null(args$seqtab)) {
       stop("Sample sheet (--samples) is required to calculate biological-sample ASV totals")
     }
     sample_sheet <- fread(args$samples, data.table = FALSE, colClasses = "character")
-    required_sample_columns <- c(
-      "sample_id", "biological_sample_id", "sample_type", "participant_id", "collection_date"
-    )
+    required_sample_columns <- "sample_id"
     missing_sample_columns <- setdiff(required_sample_columns, colnames(sample_sheet))
     if (length(missing_sample_columns) > 0) {
       stop(paste("Sample sheet is missing required columns:", paste(missing_sample_columns, collapse = ", ")))
@@ -181,6 +179,14 @@ if (!is.null(args$seqtab)) {
     if (any(sample_sheet$sample_id == "") || anyDuplicated(sample_sheet$sample_id)) {
       stop("Sample sheet sample_id values must be non-empty and unique")
     }
+    for (column in c("biological_sample_id", "participant_id", "collection_date")) {
+      if (!column %in% colnames(sample_sheet)) sample_sheet[[column]] <- ""
+      sample_sheet[[column]][is.na(sample_sheet[[column]])] <- ""
+    }
+    missing_biological <- trimws(sample_sheet$biological_sample_id) == ""
+    sample_sheet$biological_sample_id[missing_biological] <- sample_sheet$sample_id[missing_biological]
+    if (!"sample_type" %in% colnames(sample_sheet)) sample_sheet$sample_type <- "sample"
+    sample_sheet$sample_type[is.na(sample_sheet$sample_type) | trimws(sample_sheet$sample_type) == ""] <- "sample"
     sample_match <- match(rownames(seqtab_haps), sample_sheet$sample_id)
     if (any(is.na(sample_match))) {
       stop(paste(
@@ -196,18 +202,15 @@ if (!is.null(args$seqtab)) {
       ))
     }
     matched_samples <- sample_sheet[sample_match, , drop = FALSE]
-    biological_mask <- (
-      tolower(trimws(matched_samples$sample_type)) == "sample" &
-      trimws(matched_samples$participant_id) != "" &
-      trimws(matched_samples$collection_date) != ""
-    )
+    # Sequencing identity is independent of a participant or visit calendar.
+    biological_mask <- tolower(trimws(matched_samples$sample_type)) == "sample"
     if (!any(biological_mask)) {
-      stop("No dated biological samples remain after excluding controls and unassigned rows")
+      stop("No non-control samples remain. Mark laboratory specimens as sample_type=sample in metadata.")
     }
 
     biological_ids <- trimws(as.character(matched_samples$biological_sample_id[biological_mask]))
     if (any(biological_ids == "")) {
-      stop("Dated biological sample rows must have a biological_sample_id")
+      stop("Sample rows must have a biological_sample_id")
     }
     biological_identity <- unique(matched_samples[
       biological_mask,

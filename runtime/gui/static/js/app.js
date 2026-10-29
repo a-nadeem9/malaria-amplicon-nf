@@ -946,10 +946,11 @@ function renderMetadataCalendarPreview(payload) {
   const title = $("#metadata-contract-title");
   if (!container || !status || !payload) return;
   const columns = metadataContract.columns || {};
+  const hasSample = Boolean(columns.sample_id);
   const hasIdentity = Boolean(columns.participant_id);
   const hasVisit = Boolean(columns.collection_date || columns.month);
   const hasDetection = Boolean(columns.metadata_pcr);
-  metadataContractValid = hasIdentity && hasVisit && payload.ok !== false;
+  metadataContractValid = (hasSample || hasIdentity) && payload.ok !== false;
   const counts = {positive: 0, negative: 0, ignore: 0, review: 0};
   (payload.detection_values || []).forEach((item) => {
     const state = metadataContract.detection_value_map[item.value] || item.state || "review";
@@ -963,9 +964,15 @@ function renderMetadataCalendarPreview(payload) {
   if (!metadataContractValid) {
     text(title, "Mapping needed");
     text(headline, "Metadata mapping incomplete");
-    text(detail, "Choose a participant column and a complete date or visit-month column.");
+    text(detail, "Choose a sample ID or FASTQ filename column, or a participant ID column.");
     status.className = "metadata-contract__status is-review";
     text(status, "Needs mapping");
+  } else if (!hasIdentity || !hasVisit || !Number(payload.longitudinal_records || 0)) {
+    text(title, "Sample metadata ready");
+    text(headline, `${Number(payload.records || 0).toLocaleString()} sample metadata rows`);
+    text(detail, "Collection dates are optional for sequencing and Dcifer. Add participant IDs and visit dates to enable longitudinal analysis.");
+    status.className = "metadata-contract__status is-ready";
+    text(status, "Ready");
   } else if (!hasDetection) {
     text(title, "Dates mapped");
     text(headline, `${Number(payload.records || 0).toLocaleString()} dated metadata rows`);
@@ -1031,7 +1038,7 @@ async function inspectMetadata() {
       metadataContractValid
         ? hasDetection
           ? "Metadata mapped. Confirm detection values before scanning."
-          : "Metadata mapped for dates. Add PCR/qPCR results for a complete visit calendar."
+          : "Sample metadata mapped. Sequencing can run without participant IDs or dates."
         : "Complete the metadata mapping before scanning.",
       metadataContractValid && hasDetection ? "ok" : "warn"
     );
@@ -1114,8 +1121,7 @@ function sampleStatus(item) {
   if (
     boolish(item.inferred_year)
     || boolish(item.inferred_day)
-    || metadataStatus === "ambiguous"
-    || !item.collection_date
+    || ["ambiguous", "date_conflict"].includes(metadataStatus)
   ) {
     return {label: "Review", tone: "warning", key: "review"};
   }
@@ -3000,7 +3006,7 @@ async function buildAnalysisTable(mode = "cdhit98") {
     const summary = payload.summary || {};
     const output = summary.output || {};
     if (primary) {
-      text(msg, `Exact-allele input ready: ${Number(output.participant_visits || 0).toLocaleString()} participant visits and ${Number(output.alleles || 0).toLocaleString()} alleles.`);
+      text(msg, `Exact-allele input ready: ${Number(output.biological_samples || 0).toLocaleString()} biological samples and ${Number(output.alleles || 0).toLocaleString()} alleles.`);
     } else {
       const clusters = Number(summary.clusters || output.alleles || 0).toLocaleString();
       text(msg, `CD-HIT input ready: ${clusters} locus-specific clusters after analysis filtering and replicate merging. CD-HIT was not rerun.`);
@@ -3745,11 +3751,17 @@ function renderDinemitesReadiness(readiness) {
     return;
   }
   container.append(
-    readinessItem("Collection dates", readiness.missing_dates ? `${readiness.missing_dates} missing` : `${readiness.samples} complete`, readiness.missing_dates ? "bad" : "ok"),
+    readinessItem("Samples with participant and date", `${readiness.longitudinal_samples || 0} of ${readiness.samples}`, readiness.longitudinal_samples ? "ok" : "bad"),
     readinessItem("Repeated participants", `${readiness.repeated_subjects} of ${readiness.participants}`, readiness.repeated_subjects ? "ok" : "bad"),
     readinessItem("Detected loci", String(readiness.loci), readiness.loci ? "ok" : "bad"),
     readinessItem("Stan runtime", readiness.cmdstan_available ? "Available" : "Checked when model starts", readiness.cmdstan_available ? "ok" : "neutral")
   );
+  if (!readiness.longitudinal_samples) {
+    const note = document.createElement("p");
+    note.className = "field-help";
+    text(note, "DINEMITES requires participant IDs and collection dates. Sample-level sequencing and Dcifer remain available without these fields.");
+    container.appendChild(note);
+  }
   updateDinemitesRunButton();
 }
 

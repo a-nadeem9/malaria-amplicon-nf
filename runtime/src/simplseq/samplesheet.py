@@ -424,7 +424,12 @@ def parse_fastq_name(
         "source_run": "",
         "sequencing_index": "",
     }
-    wrapper = _mpg_sample_wrapper(stripped)
+    # Illumina's sample number and lane identify sequencing files, not the
+    # specimen. Keep them out of both the sample ID and participant inference.
+    illumina = re.fullmatch(r"(?P<label>.+)_S(?P<index>[0-9]+)(?:_L[0-9]{3})?", stripped, re.IGNORECASE)
+    wrapper = _mpg_sample_wrapper(illumina.group("label") if illumina else stripped)
+    if illumina:
+        wrapper["sequencing_index"] = illumina.group("index")
     label = wrapper["label"]
     parsed.update(wrapper)
     parsed["biological_sample_id"] = derive_biological_sample_id(label)

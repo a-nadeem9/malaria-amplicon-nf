@@ -163,7 +163,7 @@ def resolve_feature_columns(
 def biological_sample_ids(path: Path) -> tuple[set[str], dict[str, int]]:
     samples = pd.read_csv(path, dtype=str).fillna("")
     samples.columns = [str(column).strip().lower() for column in samples.columns]
-    required = {"sample_id", "participant_id", "collection_date"}
+    required = {"sample_id"}
     missing = sorted(required - set(samples.columns))
     if missing:
         raise ValueError(f"Sample sheet is missing: {', '.join(missing)}")
@@ -172,8 +172,6 @@ def biological_sample_ids(path: Path) -> tuple[set[str], dict[str, int]]:
         if "sample_type" in samples.columns
         else pd.Series("sample", index=samples.index)
     )
-    participant = samples["participant_id"].astype(str).str.strip()
-    collection_date = samples["collection_date"].astype(str).str.strip()
     sample_id = samples["sample_id"].astype(str).str.strip()
     biological_id = (
         samples["biological_sample_id"].astype(str).str.strip()
@@ -181,7 +179,8 @@ def biological_sample_ids(path: Path) -> tuple[set[str], dict[str, int]]:
         else sample_id
     )
     controls = ~sample_type.eq("sample")
-    missing_identity = participant.eq("") | collection_date.eq("") | biological_id.eq("")
+    biological_id = biological_id.where(biological_id.ne(""), sample_id)
+    missing_identity = biological_id.eq("") | sample_id.eq("")
     unassigned = ~controls & missing_identity
     eligible = ~controls & ~missing_identity & sample_id.ne("")
     return set(sample_id[eligible]), {

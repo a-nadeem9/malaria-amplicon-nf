@@ -49,15 +49,18 @@ cat("[dcifer/bridge] Allele abundance filter:",
     "\n")
 
 cigar_wide <- read.delim(args$cigar, header = TRUE, sep = "\t",
-                         check.names = FALSE, stringsAsFactors = FALSE)
-samples <- read.csv(args$samples, header = TRUE, stringsAsFactors = FALSE)
+                         check.names = FALSE, stringsAsFactors = FALSE, colClasses = "character")
+samples <- read.csv(args$samples, header = TRUE, stringsAsFactors = FALSE, colClasses = "character")
 colnames(samples) <- tolower(trimws(colnames(samples)))
 
-required_sample_cols <- c("sample_id", "participant_id", "collection_date", "replicate")
+required_sample_cols <- "sample_id"
 missing_cols <- setdiff(required_sample_cols, colnames(samples))
 if (length(missing_cols) > 0) {
   stop("[dcifer/bridge] Missing required samples.csv columns: ",
        paste(missing_cols, collapse = ", "))
+}
+for (column in c("participant_id", "collection_date", "replicate", "biological_sample_id")) {
+  if (!column %in% colnames(samples)) samples[[column]] <- ""
 }
 
 haplotype_cols <- setdiff(colnames(cigar_wide), "sample")
@@ -98,21 +101,19 @@ meta <- samples %>%
     sample_id = ifelse(is.na(.data$sample_id), "", trimws(as.character(.data$sample_id))),
     participant_id = ifelse(is.na(.data$participant_id), "", trimws(as.character(.data$participant_id))),
     collection_date = ifelse(is.na(.data$collection_date), "", trimws(as.character(.data$collection_date))),
+    biological_sample_id = ifelse(is.na(.data$biological_sample_id), "", trimws(as.character(.data$biological_sample_id))),
     replicate = ifelse(is.na(.data$replicate), "", trimws(as.character(.data$replicate)))
   ) %>%
   filter(
-    .data$.sample_type_for_filter == "sample" &
-      nchar(.data$participant_id) > 0 &
-      nchar(.data$collection_date) > 0
+    .data$.sample_type_for_filter == "sample" & nchar(.data$sample_id) > 0
   ) %>%
   mutate(
-    participant_id = ifelse(nchar(.data$participant_id) > 0, .data$participant_id, .data$sample_id),
     replicate = ifelse(nchar(.data$replicate) > 0, .data$replicate, "sample"),
-    analysis_sample_id = ifelse(
-      nchar(.data$collection_date) > 0,
+    analysis_sample_id = ifelse(nchar(.data$biological_sample_id) > 0, .data$biological_sample_id, ifelse(
+      nchar(.data$participant_id) > 0 & nchar(.data$collection_date) > 0,
       paste(.data$participant_id, .data$collection_date, sep = "_"),
       .data$sample_id
-    )
+    ))
   ) %>%
   select(sample_id, analysis_sample_id, participant_id, collection_date, replicate)
 
@@ -126,7 +127,7 @@ if (nrow(matched_meta) < nrow(meta)) {
 if (any(nchar(matched_meta$collection_date) == 0)) {
   cat("[dcifer/bridge] WARNING:",
       sum(nchar(matched_meta$collection_date) == 0),
-      "matched sample rows have no collection_date; those rows will be analyzed as separate sequencing samples.\n")
+      "matched sample rows have no collection_date; sample identities are used without inventing visit dates.\n")
 }
 
 cigar_meta <- cigar_long %>%

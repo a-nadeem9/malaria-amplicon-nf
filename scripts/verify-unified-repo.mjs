@@ -216,9 +216,8 @@ expect(exists("runtime/src/simplseq/cli.py"), "runtime Python CLI must exist");
 expect(exists("runtime/workflow/scripts/AmpliconPipeline.py"), "runtime workflow scripts must exist");
 expect(exists("runtime/install-simplseq.sh"), "runtime installer must exist");
 expect(
-  installer.includes('DINEMITES_LDFLAGS="${LDFLAGS:-}"') &&
-    installer.includes("-mlinker-version=0") &&
-    installer.includes('LDFLAGS="$DINEMITES_LDFLAGS"'),
+  installer.includes('CXX=/usr/bin/clang++ -arch x86_64') &&
+    installer.includes('>> "$CMDSTAN/make/local"'),
   "Apple Silicon setup must avoid the macOS 26 versioned libLTO linker failure"
 );
 

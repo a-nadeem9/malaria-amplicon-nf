@@ -91,6 +91,9 @@ def managed_java_home(conda_env: Path | None) -> Path | None:
 
 def local_runtime_env(root: Path) -> dict[str, str]:
     env = os.environ.copy()
+    # The managed environment pins Nextflow already. Its optional release
+    # check must not stall a local run on a restricted or offline network.
+    env.setdefault("NXF_DISABLE_CHECK_LATEST", "true")
     env["PYTHONPATH"] = str(root / "src") + os.pathsep + env.get("PYTHONPATH", "")
     conda_env = local_conda_env(root)
     conda_bin = conda_env / "bin" if conda_env else None

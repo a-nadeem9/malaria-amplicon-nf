@@ -265,6 +265,18 @@ def build_visit_calendar(
         ],
         ignore_index=True,
     ).drop_duplicates()
+    if keys.empty:
+        # Laboratory samples have no visit calendar. Still write well-formed
+        # empty longitudinal artifacts alongside their sample-level results.
+        columns = [
+            "participant_id", "collection_date", "time", "season", "status",
+            "visit_class", "pcr_state", "raw_pcr_values", "audit_note", "source",
+            "has_genotype", "review_required", "included_in_dinemites", "participant_has_genotype",
+        ]
+        empty = pd.DataFrame({column: pd.Series(dtype="bool" if column in {
+            "has_genotype", "review_required", "included_in_dinemites", "participant_has_genotype"
+        } else "object") for column in columns})
+        return empty, empty.copy(), pd.DataFrame(excluded_metadata)
     calendar = keys.merge(
         metadata_visits, on=["participant_id", "collection_date"], how="left"
     ).merge(
@@ -388,6 +400,9 @@ def build_dinemites_inputs(
         ]],
         on=["participant_id", "collection_date"], how="inner", validate="many_to_one",
     ).rename(columns={"participant_id": "subject", "collection_date": "date_full"})
+    # DINEMITES requires globally unique allele names, even for reference (.)
+    # alleles at different loci. Preserve locus identity in this direct route.
+    observed["allele"] = observed["locus"].astype(str) + ":" + observed["allele"].astype(str)
     observed["date_label"] = pd.to_datetime(observed["date_full"]).dt.strftime("%d %b %Y")
     observed = observed[[
         "allele", "time", "subject", "locus", "date_full", "date_label", "season",

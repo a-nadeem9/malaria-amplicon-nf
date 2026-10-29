@@ -29,20 +29,34 @@ Windows requires WSL 2. The application reuses an available WSL distribution and
 1. **Configuration:** choose the FASTQ folder, review paired reads and parsed sample identifiers, then optionally map a metadata file.
 2. **Run:** select one or more sequencing libraries, choose the output folder, and start the workflow.
 3. **Results:** inspect the run summary, filtering audit, final tables, and saved output folder.
-4. **Downstream analysis:** prepare one shared participant-visit allele table, then run DINEMITES or Dcifer against that saved input.
+4. **Downstream analysis:** prepare one shared sample allele table, then run DINEMITES or Dcifer against that saved input.
 
 Every run stores its generated `samples.csv`, parameters, logs, checksums, reports, and result tables in one run folder.
 
 ## Metadata
 
-Metadata is optional for the sequencing workflow. Without metadata, the application analyzes the sequenced samples and uses dates that can be parsed from filenames or explicitly supplied fallbacks.
+Metadata is optional for the sequencing workflow. Laboratory specimens can be genotyped using only their paired FASTQ files and sample identifiers. Participant IDs and collection dates are not required for sequencing, quality control, shared allele tables, or Dcifer; the application never invents these fields for lab samples.
+
+To annotate laboratory samples, supply a CSV, TSV, or XLSX with a `sample_id` column. Match the sample label shown in the scan preview, the biological sample ID, or a FASTQ filename (R1/R2 suffixes are ignored). The generated sequencing sample IDs and FASTQ paths remain linked. Familiar column names are detected automatically; any column can also be mapped manually.
+
+Standard Illumina sequencing suffixes are removed from sample labels: `7001_S1_L001_R1_001.fastq.gz` and its R2 mate match metadata sample ID `7001`. Do not rename the FASTQ files. Collection dates are read from supplied metadata or recognized date patterns, never from file modification times.
+
+```csv
+sample_id,biological_sample_id,sample_type,replicate,strain
+LabA_Rep1,LabA,sample,1,3D7
+LabA_Rep2,LabA,sample,2,3D7
+Blank,,negative,,
+```
+
+Only `sample_id` is needed in a sample-matched metadata file. Optional `biological_sample_id` and `replicate` columns identify technical replicates; `sample_type` distinguishes ordinary specimens (`sample`) from `negative`, `positive`, or other `control` wells. Unmapped attributes such as strain, concentration, or notes are preserved as JSON in the generated sample sheet's `metadata_attributes` column, and the original metadata file is frozen with the run.
 
 For a reproducible longitudinal visit calendar, provide a CSV, TSV, or XLSX file and confirm the worksheet, column mapping, and study-specific value meanings in the application.
 
 | Information | Requirement | Purpose |
 | --- | --- | --- |
-| Participant or subject ID | Required for metadata matching | Links visits to the participant parsed from the sample name |
-| Collection date or visit month | Required for calendar visits | Orders visits and distinguishes longitudinal observations |
+| Sample ID or FASTQ filename | Used for sample-matched lab or clinical metadata | Links annotations directly to sequencing files |
+| Participant or subject ID | Required for longitudinal analysis; also supports participant-based metadata matching | Links visits to the same participant |
+| Collection date or visit month | Required for longitudinal calendar visits | Orders visits and distinguishes longitudinal observations |
 | PCR or qPCR result | Strongly recommended | Distinguishes PCR-negative visits from PCR-positive visits without retained genotypes |
 | Season | Optional | Available as a DINEMITES covariate when the study defines it |
 | Age and sex or gender | Optional | Available as explicitly selected DINEMITES covariates |
@@ -56,6 +70,8 @@ Exact dates are retained when available. If only a month is known, the selected 
 - PCR-negative visits with no genotype expected;
 - PCR-positive visits where a genotype is missing;
 - unresolved visits that require review.
+
+DINEMITES requires real participant identifiers and at least two dated visits for a participant. Undated laboratory samples remain in sample-level outputs and are excluded from the longitudinal calendar. The GUI explains when a run lacks the visit information needed for DINEMITES.
 
 ## Supported Panel
 

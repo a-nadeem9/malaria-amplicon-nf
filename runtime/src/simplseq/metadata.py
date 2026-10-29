@@ -8,6 +8,7 @@ unparseable dates, and duplicate visits before a workflow is launched.
 from __future__ import annotations
 
 import csv
+import json
 import re
 from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
@@ -35,9 +36,15 @@ METADATA_FIELDS = [
     "metadata_match_status", "metadata_source", "metadata_age",
     "metadata_gender", "metadata_village", "metadata_season", "metadata_pcr",
     "metadata_species", "metadata_hemoglobin", "metadata_temperature",
-    "metadata_parasite_density", "metadata_status",
+    "metadata_parasite_density", "metadata_status", "metadata_attributes",
 ]
 
+SAMPLE_ALIASES = ["sample_id", "sample", "sample_name", "sampleid", "specimen_id", "fastq_id", "fastq_name", "filename"]
+SAMPLE_COLUMNS = {
+    "biological_sample_id": ["biological_sample_id", "specimen_id"],
+    "sample_type": ["sample_type", "control_type"],
+    "replicate": ["replicate", "technical_replicate", "rep"],
+}
 PARTICIPANT_ALIASES = ["participant_id", "participant", "patient_id", "patient", "subject", "subject_id", "asypid"]
 MONTH_COLUMN_ALIASES = ["collection_month", "month", "visit_month", "asypmonths"]
 DATE_ALIASES = ["collection_date", "date", "visit_date", "sample_date", "asypdates", "incidates"]
@@ -69,6 +76,10 @@ METADATA_NAME_HINTS = {
 }
 
 METADATA_COLUMN_TARGETS = (
+    "sample_id",
+    "biological_sample_id",
+    "sample_type",
+    "replicate",
     "participant_id",
     "collection_date",
     "month",
@@ -108,6 +119,7 @@ class MetadataRecord:
     source: str
     values: dict[str, str]
     row: int = 0
+    sample_id: str = ""
 
     @property
     def year_month(self) -> str:
@@ -127,6 +139,14 @@ class MetadataCatalog:
     issues: list[MetadataIssue] = field(default_factory=list)
     _visit_index: dict[tuple[str, str], list[MetadataRecord]] = field(default_factory=dict, repr=False)
     _participant_index: dict[str, list[MetadataRecord]] = field(default_factory=dict, repr=False)
+    _sample_index: dict[str, list[MetadataRecord]] = field(default_factory=dict, repr=False)
+
+    def sample_records(self, identity: str) -> list[MetadataRecord]:
+        if not self._sample_index:
+            for record in self.records:
+                if record.sample_id:
+                    self._sample_index.setdefault(sample_key(record.sample_id), []).append(record)
+        return self._sample_index.get(sample_key(identity), [])
 
     def candidates(self, participant: str, month: str) -> list[MetadataRecord]:
         if not self._visit_index and self.records:
@@ -142,7 +162,7 @@ class MetadataCatalog:
 
     def summary(self) -> dict[str, Any]:
         counts = Counter(issue.severity for issue in self.issues)
-        participants = {normalize_key(record.participant_id) for record in self.records}
+        participants = {normalize_key(record.participant_id) for record in self.records if record.participant_id}
         return {
             "source": self.source,
             "sheet": self.sheet,
@@ -156,6 +176,8 @@ class MetadataCatalog:
             ),
             "records": len(self.records),
             "participants": len(participants),
+            "sample_records": sum(bool(record.sample_id) for record in self.records),
+            "longitudinal_records": sum(bool(record.participant_id and (record.collection_date or record.month)) for record in self.records),
             "issues": [asdict(issue) for issue in self.issues[:50]],
             "issue_count_total": len(self.issues),
             "issue_counts": dict(counts),
@@ -165,6 +187,12 @@ class MetadataCatalog:
 def normalize_key(value: object) -> str:
     raw = "" if value is None else str(value)
     return re.sub(r"[^a-z0-9]+", "", raw.lower())
+
+
+def sample_key(value: object) -> str:
+    """Match sample labels or FASTQ basenames without erasing ID punctuation."""
+    name = re.split(r"[\\/]", str(value or "").strip())[-1]
+    return re.sub(r"_R[12](?:_001)?\.f(?:ast)?q(?:\.gz)?$", "", name, flags=re.IGNORECASE).casefold()
 
 
 def normalize_detection_token(value: object) -> str:
@@ -362,7 +390,7 @@ def month_from_date(value: object, date_order: DateOrder = "auto") -> str:
 
 def _header_score(row: list[object]) -> int:
     keys = {normalize_key(value) for value in row if _display_value(value)}
-    groups = (PARTICIPANT_ALIASES, MONTH_COLUMN_ALIASES, DATE_ALIASES)
+    groups = (SAMPLE_ALIASES, PARTICIPANT_ALIASES, MONTH_COLUMN_ALIASES, DATE_ALIASES)
     score = sum(5 for aliases in groups if any(normalize_key(alias) in keys for alias in aliases))
     score += sum(1 for aliases in CANONICAL_COLUMNS.values() if any(normalize_key(alias) in keys for alias in aliases))
     return score
@@ -468,7 +496,9 @@ def inspect_metadata(
     participant_col = first_existing_column(columns, PARTICIPANT_ALIASES)
     month_col = first_existing_column(columns, MONTH_COLUMN_ALIASES)
     date_col = first_existing_column(columns, DATE_ALIASES)
-    mapping = {"participant_id": participant_col, "month": month_col, "collection_date": date_col}
+    mapping = {"sample_id": first_existing_column(columns, SAMPLE_ALIASES),
+               "participant_id": participant_col, "month": month_col, "collection_date": date_col}
+    mapping.update({name: first_existing_column(columns, aliases) for name, aliases in SAMPLE_COLUMNS.items()})
     mapping.update({name: first_existing_column(columns, aliases) for name, aliases in CANONICAL_COLUMNS.items()})
     for target, source in (column_overrides or {}).items():
         if target not in METADATA_COLUMN_TARGETS:
@@ -480,6 +510,7 @@ def inspect_metadata(
                 f"worksheet '{selected_sheet or metadata_path.name}'."
             )
         mapping[target] = requested
+    sample_col = mapping.get("sample_id", "")
     participant_col = mapping.get("participant_id", "")
     month_col = mapping.get("month", "")
     date_col = mapping.get("collection_date", "")
@@ -501,11 +532,8 @@ def inspect_metadata(
         available_columns=columns,
         value_counts=value_counts,
     )
-    if not participant_col:
-        catalog.issues.append(MetadataIssue("error", "participant_column_missing", "No participant or patient ID column was detected."))
-        return catalog
-    if not month_col and not date_col:
-        catalog.issues.append(MetadataIssue("error", "visit_column_missing", "No collection date or visit month column was detected."))
+    if not sample_col and not participant_col:
+        catalog.issues.append(MetadataIssue("error", "identity_column_missing", "Map a sample ID (or FASTQ filename) column, or a participant ID column."))
         return catalog
 
     participant_collisions = normalized_identifier_collisions(
@@ -524,8 +552,9 @@ def inspect_metadata(
     ambiguous_date_rows: list[int] = []
     for row in rows:
         source_row = int(row.get("__source_row__", 0) or 0)
+        sample_id = _display_value(row.get(sample_col))
         participant = _display_value(row.get(participant_col))
-        if not participant:
+        if not participant and not sample_id:
             continue
         raw_date = row.get(date_col) if date_col else None
         parsed_date = parse_date(raw_date, date_order)
@@ -535,11 +564,17 @@ def inspect_metadata(
         # (for example, a March visit collected on April 1). Preserve an explicit
         # visit month for filename matching while retaining the real date.
         month = (normalize_month(row.get(month_col)) if month_col else "") or month_from_date(parsed_date)
-        if not month:
-            catalog.issues.append(MetadataIssue("warning", "visit_month_missing", f"No usable visit month for participant {participant}.", source_row))
-            continue
         values = {name: _display_value(row.get(source)) if source else "" for name, source in mapping.items() if name.startswith("metadata_")}
-        catalog.records.append(MetadataRecord(participant, month, parsed_date, date_col if parsed_date else "", metadata_path.name, values, source_row))
+        values.update({name: _display_value(row.get(mapping[name])) for name in SAMPLE_COLUMNS if mapping.get(name) and _display_value(row.get(mapping[name]))})
+        if values.get("sample_type"):
+            sample_type = values["sample_type"].strip().lower()
+            sample_type = {"ntc": "negative", "blank": "negative", "negative_control": "negative", "positive_control": "positive"}.get(sample_type, sample_type)
+            if sample_type not in {"sample", "negative", "positive", "control"}:
+                catalog.issues.append(MetadataIssue("error", "sample_type_invalid", "Sample type must be sample, negative, positive, or control.", source_row))
+            values["sample_type"] = sample_type
+        attributes = {column: _display_value(row.get(column)) for column in columns if column not in set(mapping.values())}
+        values["metadata_attributes"] = json.dumps(attributes, ensure_ascii=False, sort_keys=True) if attributes else ""
+        catalog.records.append(MetadataRecord(participant, month, parsed_date, date_col if parsed_date else "", metadata_path.name, values, source_row, sample_id))
 
     if ambiguous_date_rows:
         catalog.issues.append(MetadataIssue(
@@ -548,6 +583,8 @@ def inspect_metadata(
         ))
     grouped: dict[tuple[str, str], list[MetadataRecord]] = defaultdict(list)
     for record in catalog.records:
+        if not record.participant_id or not (record.month or record.collection_date):
+            continue
         visit_key = record.year_month or f"month-{record.month}"
         grouped[(normalize_key(record.participant_id), visit_key)].append(record)
     for (_, visit_key), records in grouped.items():
@@ -564,7 +601,7 @@ def read_metadata_table(path: Path, sheet_name: str = "") -> list[dict[str, str]
     """Compatibility helper for callers that need normalized metadata records."""
     catalog = inspect_metadata(path, sheet_name)
     return [
-        {"participant_id": record.participant_id, "month": record.month, "collection_date": record.collection_date, **record.values}
+        {"sample_id": record.sample_id, "participant_id": record.participant_id, "month": record.month, "collection_date": record.collection_date, **record.values}
         for record in catalog.records
     ]
 
@@ -599,6 +636,8 @@ def _match_record(
     sample_date_source: str = "",
 ) -> tuple[MetadataRecord | None, str]:
     participant_records = list(catalog.participant_records(participant))
+    if not participant:
+        return None, "missing"
     parsed_sample_date = parse_date(sample_date)
     source_token = str(sample_date_source or "").strip().lower()
     sample_date_is_exact = bool(parsed_sample_date) and (
@@ -618,6 +657,8 @@ def _match_record(
         candidates = list(catalog.candidates(participant, month))
 
     if not candidates:
+        if len(participant_records) == 1 and not participant_records[0].month:
+            return participant_records[0], "matched"
         status_matches = [
             record for record in participant_records
             if normalize_key(record.values.get("metadata_status", "")) in sample_tokens
@@ -662,6 +703,24 @@ def _match_record(
     return None, "ambiguous"
 
 
+def _match_sample_record(catalog: MetadataCatalog, row: Mapping[str, str]) -> tuple[MetadataRecord | None, str]:
+    for field_name in ("sample_id", "fastq_1", "fastq_2", "biological_sample_id"):
+        identity = str(row.get(field_name, "") or "").strip()
+        candidates = catalog.sample_records(identity) if identity else []
+        if not candidates:
+            continue
+        signatures = {(record.participant_id, record.month, record.collection_date, tuple(sorted(record.values.items()))) for record in candidates}
+        if len(signatures) != 1:
+            return None, "ambiguous"
+        record = candidates[0]
+        source = str(row.get("collection_date_source", ""))
+        if record.collection_date and ("exact_date" in source or source.startswith("metadata:")):
+            if parse_date(row.get("collection_date", "")) != record.collection_date:
+                return None, "date_conflict"
+        return record, "matched"
+    return None, "missing"
+
+
 def enrich_rows_with_metadata(
     rows: list[dict[str, str]],
     metadata_path: Path | str | None,
@@ -687,14 +746,15 @@ def enrich_rows_with_metadata(
         for field_name in METADATA_FIELDS:
             next_row.setdefault(field_name, "")
         month = sample_month(next_row.get("sample_id", ""), next_row.get("collection_date", ""))
-        record, status = _match_record(
-            catalog,
-            next_row.get("participant_id", ""),
-            next_row.get("collection_date", ""),
-            month,
-            next_row.get("sample_id", ""),
-            next_row.get("collection_date_source", ""),
-        )
+        record, status = _match_sample_record(catalog, next_row)
+        # A supplied sample ID is an explicit matching contract. An unmatched
+        # sample must never borrow another specimen's participant-level row.
+        if status == "missing" and not catalog.columns.get("sample_id"):
+            record, status = _match_record(
+                catalog, next_row.get("participant_id", ""),
+                next_row.get("collection_date", ""), month,
+                next_row.get("sample_id", ""), next_row.get("collection_date_source", ""),
+            )
         next_row["metadata_match_status"] = status
         if status == "date_conflict":
             next_row["date_note"] = (
@@ -704,6 +764,8 @@ def enrich_rows_with_metadata(
         if record:
             next_row["metadata_source"] = record.source
             next_row.update(record.values)
+            if record.participant_id:
+                next_row["participant_id"] = record.participant_id
             if record.collection_date:
                 next_row["collection_date"] = record.collection_date
                 next_row["collection_date_source"] = f"metadata:{record.date_source}"

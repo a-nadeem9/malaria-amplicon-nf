@@ -714,7 +714,7 @@ def analysis_readiness(outdir: Path, mode: str = "primary") -> dict[str, Any]:
                     sample_id = str(row.get("sample_id", "") or "").strip()
                     participant = str(row.get("participant_id", "") or "").strip()
                     sample_type = str(row.get("sample_type", "sample") or "sample").strip().lower()
-                    if sample_type != "sample" or not participant:
+                    if sample_type != "sample":
                         continue
                     if table_sample_ids and sample_id not in table_sample_ids:
                         continue
@@ -724,13 +724,15 @@ def analysis_readiness(outdir: Path, mode: str = "primary") -> dict[str, Any]:
 
     participant_visits: dict[str, set[str]] = {}
     missing_dates = 0
+    longitudinal_samples = 0
     for row in samples:
         participant = str(row.get("participant_id", "") or "").strip()
         collection_date = str(row.get("collection_date", "") or "").strip()
         if not collection_date:
             missing_dates += 1
-        if participant:
+        if participant and collection_date:
             participant_visits.setdefault(participant, set()).add(collection_date)
+            longitudinal_samples += 1
     repeated_subjects = sum(1 for visits in participant_visits.values() if len({value for value in visits if value}) > 1)
 
     env_dir = Path(os.environ.get("SIMPLSEQ_ENV_DIR", "")) if os.environ.get("SIMPLSEQ_ENV_DIR") else None
@@ -743,10 +745,11 @@ def analysis_readiness(outdir: Path, mode: str = "primary") -> dict[str, Any]:
         "participants": len(participant_visits),
         "repeated_subjects": repeated_subjects,
         "missing_dates": missing_dates,
+        "longitudinal_samples": longitudinal_samples,
         "loci": len(loci),
         "cmdstan_available": cmdstan_available,
         "analysis_mode": normalized_mode,
-        "dinemites_ready": bool(samples and repeated_subjects and missing_dates == 0 and safe_is_file(cigar_path)),
+        "dinemites_ready": bool(repeated_subjects and safe_is_file(cigar_path)),
         "dcifer_ready": bool(len(samples) >= 2 and len(loci) >= 2 and safe_is_file(cigar_path)),
         "dcifer_single_locus": len(loci) == 1,
     }
@@ -779,19 +782,20 @@ def sample_rows_preview(
         if sample_type in {"negative", "positive", "control"}:
             return "excluded"
         inferred = any(str(row.get(field, "")).lower() == "true" for field in ("inferred_year", "inferred_day"))
-        ambiguous = str(row.get("metadata_match_status", "")).lower() == "ambiguous"
-        missing_date = not str(row.get("collection_date", "")).strip()
-        return "review" if inferred or ambiguous or missing_date else "ready"
+        ambiguous = str(row.get("metadata_match_status", "")).lower() in {"ambiguous", "date_conflict"}
+        return "review" if inferred or ambiguous else "ready"
 
     def review_reason(row: dict[str, str]) -> str:
         status = review_status(row)
         sample_type = str(row.get("sample_type", "sample")).strip().lower()
         if status == "excluded":
             return f"{sample_type.title()} control" if sample_type in {"negative", "positive"} else "Control"
-        if not str(row.get("collection_date", "")).strip():
-            return "Collection date missing"
+        if str(row.get("metadata_match_status", "")).lower() == "date_conflict":
+            return "Sample and metadata dates conflict"
         if str(row.get("metadata_match_status", "")).lower() == "ambiguous":
             return "Multiple metadata rows"
+        if not str(row.get("collection_date", "")).strip():
+            return "Sample-level analysis; no visit date provided"
         inferred_year = str(row.get("inferred_year", "")).lower() == "true"
         inferred_day = str(row.get("inferred_day", "")).lower() == "true"
         if inferred_year and inferred_day:
@@ -2175,10 +2179,7 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
 
     @app.get("/api/metadata/template")
     def api_metadata_template():
-        header = (
-            "participant_id,visit_date,visit_month,pcr_result,season,"
-            "visit_status,age,sex\r\n"
-        )
+        header = "sample_id,biological_sample_id,sample_type,replicate,participant_id,collection_date,pcr_result,strain,notes\r\n"
         return send_file(
             BytesIO(header.encode("utf-8")),
             mimetype="text/csv",
@@ -3195,6 +3196,14 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
         prepared_samples = analysis_samples_path(outdir, analysis_mode)
         if not prepared_samples.exists():
             return json_error("Build the shared analysis input in Quality control before running DINEMITES.", 400)
+
+        readiness = analysis_readiness(outdir, analysis_mode)
+        if not readiness["dinemites_ready"]:
+            return json_error(
+                "DINEMITES needs a participant ID and collection dates for at least two visits of a participant. "
+                "Laboratory samples can complete sequencing, quality control, and Dcifer without visit metadata.",
+                400,
+            )
 
         _, active = reconcile_state(dinemites_state_path(outdir, analysis_mode))
         if active:

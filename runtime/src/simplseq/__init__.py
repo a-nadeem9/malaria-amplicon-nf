@@ -1,3 +1,3 @@
 """malaria-amplicon-nf command line and browser helpers."""
 
-__version__ = "2.2.27"
+__version__ = "2.2.28"

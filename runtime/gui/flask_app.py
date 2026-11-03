@@ -1683,6 +1683,26 @@ def bundle_result_paths(outdir: Path) -> list[tuple[Path, str]]:
 
 def downloads_dir() -> Path:
     path = Path.home() / "Downloads"
+    if is_wsl():
+        # The desktop backend runs inside WSL; exports belong to the Windows user.
+        script = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+$key = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders'
+$folder = Get-ItemPropertyValue -LiteralPath $key -Name '{374DE290-123F-4565-9164-39C4925E467B}'
+[Environment]::ExpandEnvironmentVariables($folder)
+"""
+        try:
+            completed = subprocess.run(
+                ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", script],
+                capture_output=True, text=True, encoding="utf-8", check=False, timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise OSError("Could not find the Windows Downloads folder.") from exc
+        selected = completed.stdout.strip().lstrip("\ufeff")
+        if completed.returncode != 0 or not re.match(r"^[A-Za-z]:[\\/]", selected):
+            raise OSError("The Windows Downloads folder is unavailable or is not on a local drive.")
+        path = Path(windows_to_wsl_path(selected))
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -2895,6 +2915,24 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
         if not safe_is_file(path):
             abort(404)
         return send_file(path, as_attachment=True, download_name=path.name)
+
+    @app.post("/api/save-result/analysis-table")
+    def api_save_analysis_table():
+        outdir = resolve_app_path(workspace, request.args.get("out"), "results").resolve()
+        mode = downstream_analysis_mode(request.args.get("mode"))
+        path = analysis_long_path(outdir, mode).resolve()
+        try:
+            path.relative_to(outdir)
+        except ValueError:
+            abort(404)
+        if not safe_is_file(path):
+            abort(404)
+        try:
+            target = unique_download_path(path.name)
+            shutil.copy2(path, target)
+        except OSError as exc:
+            return jsonify({"ok": False, "error": f"Could not save the allele table: {exc}"}), 500
+        return jsonify({"ok": True, "path": str(target), "filename": target.name})
 
     # ------------------------------------------------------------------
     # DINEMITES analysis endpoints

@@ -42,6 +42,9 @@ let logInFlight = false;
 let latestStatusPayload = null;
 let latestResultsPayload = null;
 let latestAnalysisInputStatus = null;
+let analysisPreparationRequest = null;
+let analysisPreparationMessage = null;
+let analysisModeControlsDisabled = false;
 let lastRunStatus = "";
 let completedRedirectKey = "";
 let displayedProgressPercent = 0;
@@ -246,16 +249,33 @@ function updateSamplePathHelp() {
 }
 
 function analysisMinAbundancePct() {
-  return Number($("#analysis-min-abundance-pct")?.value || 1);
+  const input = $("#analysis-min-abundance-pct");
+  if (!input) return 1;
+  const value = String(input.value).trim();
+  return value === "" ? NaN : Number(value);
 }
 
 function analysisAbundanceDenominator() {
   return $("#analysis-abundance-denominator")?.value || "locus";
 }
 
+function analysisFilterSettingsValid() {
+  const threshold = analysisMinAbundancePct();
+  return Number.isFinite(threshold) && threshold >= 0 && threshold <= 100
+    && ["locus", "sample"].includes(analysisAbundanceDenominator());
+}
+
+function analysisFilterDescription(threshold, denominator) {
+  return `${threshold}% of ${denominator === "sample" ? "all reads in the sample" : "reads at the same locus"}`;
+}
+
 function updateAnalysisFilterSummary() {
   const summary = $("#analysis-filter-summary");
   if (!summary) return;
+  if (!analysisFilterSettingsValid()) {
+    text(summary, "Enter a minimum allele abundance from 0 to 100% before applying filters.");
+    return;
+  }
   const abundance = analysisMinAbundancePct().toLocaleString(undefined, {
     maximumFractionDigits: 2
   });
@@ -287,6 +307,18 @@ function syncAnalysisInputChoice(mode) {
   });
   $("#analysis-build-primary")?.classList.toggle("primary", normalized === "off");
   $("#analysis-build-table")?.classList.toggle("primary", normalized === "summed");
+  const primaryActions = $("#analysis-primary-actions");
+  const cdhitActions = $("#analysis-cdhit-actions");
+  if (primaryActions) primaryActions.hidden = normalized !== "off";
+  if (cdhitActions) cdhitActions.hidden = normalized !== "summed";
+  const primaryLaunch = $("#analysis-primary-launch-actions");
+  const cdhitLaunch = $("#analysis-cdhit-launch-actions");
+  if (primaryLaunch) primaryLaunch.hidden = normalized !== "off";
+  if (cdhitLaunch) cdhitLaunch.hidden = normalized !== "summed";
+  text(
+    $("#analysis-selected-label"),
+    normalized === "summed" ? "Selected: CD-HIT 98.9% clusters" : "Selected: Exact CIGAR alleles"
+  );
 }
 
 function setAnalysisMode(mode, persist = true) {
@@ -311,13 +343,15 @@ function setAnalysisMode(mode, persist = true) {
   );
   text($("#dinemites-run"), cdhit ? "Run CD-HIT comparison" : "Run DINEMITES");
   text($("#dcifer-run"), cdhit ? "Run CD-HIT comparison" : "Run Dcifer");
+  updateAnalysisPreparationState();
   if (persist) saveSettings();
 }
 
 function setAnalysisModeControlsDisabled(disabled) {
+  analysisModeControlsDisabled = disabled;
   ["#dinemites-analysis-mode", "#dcifer-analysis-mode"].forEach((selector) => {
     const select = $(selector);
-    if (select) select.disabled = disabled;
+    if (select) select.disabled = disabled || Boolean(analysisPreparationRequest);
   });
 }
 
@@ -2797,6 +2831,8 @@ function renderQCDashboard(payload = {}) {
   });
   const cdhitFiles = (payload.cdhit_files || []).filter((item) => item.status === "ready");
   const cdhitSummary = payload.cdhit_summary || {};
+  const disclosure = $("#qc-results-disclosure");
+  if (disclosure) disclosure.hidden = !asvSummary && !cdhitFiles.length;
 
   const dashboard = document.createElement("div");
   dashboard.className = "results-dashboard";
@@ -2884,46 +2920,141 @@ function renderQCDashboard(payload = {}) {
 }
 
 function analysisInputMatchesSettings(input = {}) {
-  if (!input.available) return false;
+  if (!input.available || !analysisFilterSettingsValid()) return false;
   const filter = input.summary?.abundance_filter || {};
   return Math.abs(Number(filter.threshold_percent) - analysisMinAbundancePct()) < 0.000001
     && String(filter.denominator || "") === analysisAbundanceDenominator()
     && String(input.summary?.replicate_policy || "") === "strict";
 }
 
+function updateAnalysisPreparationState() {
+  const mode = analysisApiMode();
+  const input = latestAnalysisInputStatus?.[mode] || {};
+  const ready = analysisInputMatchesSettings(input);
+  const valid = analysisFilterSettingsValid();
+  const busy = Boolean(analysisPreparationRequest);
+  const hasRun = hasSelectedRunOutputs();
+  const name = mode === "primary" ? "Exact CIGAR alleles" : "CD-HIT 98.9% clusters";
+  const settings = input.summary?.abundance_filter || {};
+  const savedSettings = Number.isFinite(Number(settings.threshold_percent)) && ["locus", "sample"].includes(settings.denominator)
+    ? analysisFilterDescription(settings.threshold_percent, settings.denominator)
+    : "different filter settings";
+  const selectedSettings = valid ? analysisFilterDescription(analysisMinAbundancePct(), analysisAbundanceDenominator()) : "";
+  const state = busy ? "building" : !valid ? "invalid" : ready ? "ready" : input.available ? "pending" : "missing";
+  const container = $("#analysis-apply-state");
+  if (container) {
+    container.dataset.state = state;
+    container.setAttribute("aria-busy", String(busy));
+  }
+  const controls = $("#analysis-preparation-controls");
+  if (controls) controls.disabled = busy;
+  const abundanceInput = $("#analysis-min-abundance-pct");
+  if (abundanceInput) abundanceInput.setAttribute("aria-invalid", String(!valid));
+  const validation = $("#analysis-filter-validation");
+  if (validation) validation.hidden = valid;
+  let title;
+  let detail;
+  let next;
+  if (busy) {
+    const submitted = analysisPreparationRequest;
+    title = "Applying filters…";
+    detail = `${submitted.mode === "primary" ? "Exact CIGAR alleles" : "CD-HIT 98.9% clusters"}: ${analysisFilterDescription(submitted.min_abundance_pct, submitted.abundance_denominator)}.`;
+    next = "The table and analysis shortcuts will be available when preparation finishes.";
+  } else if (!valid) {
+    title = "Check the filter value";
+    detail = "Minimum allele abundance must be a number from 0 to 100%.";
+    next = "Enter a valid value, then apply the filters.";
+  } else if (ready) {
+    title = "Filters applied — table ready";
+    const output = input.summary?.output || {};
+    const samples = Number(output.biological_samples ?? input.samples ?? 0).toLocaleString();
+    const alleles = Number(output.alleles ?? input.alleles ?? input.summary?.clusters ?? 0).toLocaleString();
+    const visits = Number(output.participant_visits || 0).toLocaleString();
+    detail = `${name} · ${selectedSettings}. ${samples} samples, ${alleles} ${mode === "primary" ? "alleles" : "clusters"}, ${visits} dated visits.`;
+    next = "Inspect or save the table, then choose an analysis below.";
+  } else if (input.available) {
+    title = "Changes not applied";
+    detail = `Saved table: ${savedSettings}. Current selection: ${selectedSettings}.`;
+    next = "Apply changes to update the selected table before continuing.";
+  } else {
+    title = "Table not prepared";
+    detail = `${name} · ${selectedSettings}.`;
+    next = "Apply filters to create the selected allele table.";
+  }
+  text($("#analysis-apply-title"), title);
+  text($("#analysis-apply-detail"), detail);
+  text($("#analysis-apply-next"), next);
+  text($("#analysis-continue-note"), ready && !busy
+    ? "Choose an analysis. Each tool checks its own data requirements."
+    : busy ? "Wait for preparation to finish before continuing."
+      : "Apply the selected filters before continuing.");
+  [["#analysis-build-primary", "primary"], ["#analysis-build-table", "cdhit98"]].forEach(([selector, buttonMode]) => {
+    const button = $(selector);
+    if (!button) return;
+    button.hidden = mode !== buttonMode || (ready && !busy);
+    button.disabled = !hasRun || !valid || busy;
+    text(button, busy ? "Applying…" : input.available ? "Apply changes" : "Apply filters and prepare table");
+  });
+  const rebuild = $("#analysis-rebuild");
+  if (rebuild) {
+    rebuild.hidden = !ready || busy;
+    rebuild.disabled = !hasRun || !valid || busy;
+  }
+  const message = $("#analysis-input-message");
+  const context = analysisPreparationMessage;
+  const relevant = context && context.mode === mode && context.outdir === dinemitesOutdir()
+    && context.min_abundance_pct === analysisMinAbundancePct()
+    && context.abundance_denominator === analysisAbundanceDenominator();
+  if (message) {
+    message.className = `inline-message${relevant && context.kind ? ` ${context.kind}` : ""}`;
+    text(message, relevant ? context.text : "");
+  }
+}
+
 async function buildAnalysisTable(mode = "cdhit98") {
   const msg = $("#analysis-input-message");
-  if (!msg) return;
-  msg.className = "inline-message";
+  if (!msg || analysisPreparationRequest || !hasSelectedRunOutputs()) return;
+  if (!analysisFilterSettingsValid()) {
+    updateAnalysisPreparationState();
+    return;
+  }
   saveSettings();
   const primary = mode === "primary";
-  const button = primary ? $("#analysis-build-primary") : $("#analysis-build-table");
-  if (button) button.disabled = true;
-  text(msg, primary
-    ? "Confirming alleles across technical replicates and applying the biological call rules..."
-    : "Preparing a sensitivity input from the existing 98.9% CD-HIT clusters...");
+  const submitted = {
+    outdir: dinemitesOutdir(),
+    mode,
+    min_abundance_pct: analysisMinAbundancePct(),
+    abundance_denominator: analysisAbundanceDenominator()
+  };
+  analysisPreparationRequest = submitted;
+  analysisPreparationMessage = {
+    ...submitted,
+    kind: "",
+    text: primary
+      ? "Confirming alleles across technical replicates and applying the biological call rules..."
+      : "Preparing a sensitivity input from the existing 98.9% CD-HIT clusters..."
+  };
+  setAnalysisModeControlsDisabled(analysisModeControlsDisabled);
+  updateAnalysisInputAvailability(latestAnalysisInputStatus || {});
   try {
-    const payload = await postJson("/api/analysis-table/build", {
-      outdir: dinemitesOutdir(),
-      mode,
-      min_abundance_pct: analysisMinAbundancePct(),
-      abundance_denominator: analysisAbundanceDenominator()
-    });
-    updateAnalysisInputAvailability(payload.inputs || {});
-    msg.classList.add("ok");
+    const payload = await postJson("/api/analysis-table/build", submitted);
+    if (submitted.outdir !== dinemitesOutdir()) return;
+    latestAnalysisInputStatus = payload.inputs || {};
     const summary = payload.summary || {};
     const output = summary.output || {};
+    analysisPreparationMessage.kind = "ok";
     if (primary) {
-      text(msg, `Exact-allele input ready: ${Number(output.biological_samples || 0).toLocaleString()} samples, ${Number(output.participant_visits || 0).toLocaleString()} dated visits and ${Number(output.alleles || 0).toLocaleString()} alleles.`);
+      analysisPreparationMessage.text = `Exact-allele input ready: ${Number(output.biological_samples || 0).toLocaleString()} samples, ${Number(output.participant_visits || 0).toLocaleString()} dated visits and ${Number(output.alleles || 0).toLocaleString()} alleles.`;
     } else {
       const clusters = Number(summary.clusters || output.alleles || 0).toLocaleString();
-      text(msg, `CD-HIT input ready: ${clusters} locus-specific clusters after analysis filtering and replicate merging. CD-HIT was not rerun.`);
+      analysisPreparationMessage.text = `CD-HIT input ready: ${clusters} locus-specific clusters after analysis filtering and replicate merging. CD-HIT was not rerun.`;
     }
   } catch (error) {
-    msg.classList.add("bad");
-    text(msg, userMessage(error.message));
+    analysisPreparationMessage = {...submitted, kind: "bad", text: userMessage(error.message)};
   } finally {
-    if (button) button.disabled = false;
+    analysisPreparationRequest = null;
+    setAnalysisModeControlsDisabled(analysisModeControlsDisabled);
+    updateAnalysisInputAvailability(latestAnalysisInputStatus || {});
   }
 }
 
@@ -2933,6 +3064,7 @@ function updateAnalysisInputAvailability(inputs = {}) {
   const sensitivity = inputs.cdhit98 || {};
   const primaryReady = analysisInputMatchesSettings(primary);
   const available = analysisInputMatchesSettings(sensitivity);
+  const busy = Boolean(analysisPreparationRequest);
   const hasRun = hasSelectedRunOutputs();
   updateQCWorkspaceState(hasRun);
   ["#dinemites-analysis-mode", "#dcifer-analysis-mode"].forEach((selector) => {
@@ -2943,31 +3075,28 @@ function updateAnalysisInputAvailability(inputs = {}) {
 
   const primaryStatus = $("#analysis-primary-status");
   if (primaryStatus) {
-    primaryStatus.className = `analysis-input-state${primaryReady ? " is-ready" : ""}`;
-    if (primaryReady) {
+    primaryStatus.className = `analysis-input-state${primaryReady ? " is-ready" : primary.available ? " is-pending" : ""}`;
+    if (analysisPreparationRequest?.mode === "primary") {
+      text(primaryStatus, "Applying filters…");
+    } else if (primaryReady) {
       const output = primary.summary?.output || {};
       text(primaryStatus, `Ready - ${Number(output.biological_samples ?? primary.samples ?? 0).toLocaleString()} samples, ${Number(output.participant_visits || 0).toLocaleString()} dated visits, ${Number(output.alleles ?? primary.alleles ?? 0).toLocaleString()} alleles`);
     } else {
-      text(primaryStatus, primary.available ? "Settings changed - rebuild required" : "Not built");
+      text(primaryStatus, primary.available ? "Changes not applied" : "Not prepared");
     }
-  }
-  const primaryBuild = $("#analysis-build-primary");
-  if (primaryBuild) {
-    primaryBuild.disabled = !hasRun;
-    text(primaryBuild, primaryReady ? "Update exact-allele input" : "Prepare exact-allele input");
   }
   const primaryView = $("#analysis-view-primary");
   const primaryDownload = $("#analysis-download-primary");
   if (primaryView) {
-    primaryView.hidden = !primaryReady;
-    primaryView.disabled = !primaryReady;
+    primaryView.hidden = false;
+    primaryView.disabled = !hasRun || !primaryReady || busy;
     primaryView.onclick = primaryReady && primary.table_url
       ? () => openTableViewer(primary.table_url, "Shared exact-CIGAR analysis table")
       : null;
   }
   if (primaryDownload) {
-    primaryDownload.hidden = !primaryReady;
-    primaryDownload.disabled = !primaryReady;
+    primaryDownload.hidden = false;
+    primaryDownload.disabled = !hasRun || !primaryReady || busy;
     primaryDownload.onclick = primaryReady && primary.download_url
       ? () => downloadFile(primary.download_url, primaryDownload)
       : null;
@@ -2975,32 +3104,29 @@ function updateAnalysisInputAvailability(inputs = {}) {
 
   const status = $("#analysis-cdhit-status");
   if (status) {
-    status.className = `analysis-input-state${available ? " is-ready" : ""}`;
-    if (available) {
+    status.className = `analysis-input-state${available ? " is-ready" : sensitivity.available ? " is-pending" : ""}`;
+    if (analysisPreparationRequest?.mode === "cdhit98") {
+      text(status, "Applying filters…");
+    } else if (available) {
       const alleles = Number(sensitivity.alleles || sensitivity.summary?.clusters || 0).toLocaleString();
       const samples = Number(sensitivity.samples || 0).toLocaleString();
       text(status, `Ready - ${alleles} clusters, ${samples} samples`);
     } else {
-      text(status, "Not built");
+      text(status, sensitivity.available ? "Changes not applied" : "Not prepared");
     }
-  }
-  const buildButton = $("#analysis-build-table");
-  if (buildButton) {
-    buildButton.disabled = !hasRun;
-    text(buildButton, available ? "Update CD-HIT input" : "Prepare CD-HIT input");
   }
   const viewButton = $("#analysis-view-table");
   const downloadButton = $("#analysis-download-table");
   if (viewButton) {
-    viewButton.disabled = !available;
-    viewButton.hidden = !available;
+    viewButton.disabled = !hasRun || !available || busy;
+    viewButton.hidden = false;
     viewButton.onclick = available && sensitivity.table_url
       ? () => openTableViewer(sensitivity.table_url, "CD-HIT 98.9% sensitivity input")
       : null;
   }
   if (downloadButton) {
-    downloadButton.disabled = !available;
-    downloadButton.hidden = !available;
+    downloadButton.disabled = !hasRun || !available || busy;
+    downloadButton.hidden = false;
     downloadButton.onclick = available && sensitivity.download_url
       ? () => downloadFile(sensitivity.download_url, downloadButton)
       : null;
@@ -3008,23 +3134,20 @@ function updateAnalysisInputAvailability(inputs = {}) {
   ["#analysis-open-cdhit-dinemites", "#analysis-open-cdhit-dcifer"].forEach((selector) => {
     const button = $(selector);
     if (!button) return;
-    button.disabled = !available;
-    button.hidden = !available;
+    button.disabled = !hasRun || !available || busy;
+    button.hidden = false;
     button.title = available ? "" : "Prepare the CD-HIT 98.9% sensitivity input first.";
   });
-  const cdhitLaunchActions = $("#analysis-cdhit-launch-actions");
-  if (cdhitLaunchActions) cdhitLaunchActions.hidden = !available;
-
   ["#qc-continue-dinemites", "#qc-continue-dcifer"].forEach((selector) => {
     const button = $(selector);
     if (button) {
-      button.disabled = !primaryReady;
-      button.hidden = !primaryReady;
+      button.disabled = !hasRun || !primaryReady || busy;
+      button.hidden = false;
       button.title = primaryReady ? "" : "Prepare the exact-allele input first.";
     }
   });
-  const primaryLaunchActions = $("#analysis-primary-launch-actions");
-  if (primaryLaunchActions) primaryLaunchActions.hidden = !primaryReady;
+  syncAnalysisInputChoice(analysisCdhitMode());
+  updateAnalysisPreparationState();
   updateDinemitesRunButton();
   updateDciferRunButton();
 }
@@ -3427,6 +3550,9 @@ function bindEvents() {
     setAnalysisMode("off");
     buildAnalysisTable("primary");
   });
+  $("#analysis-rebuild")?.addEventListener("click", () => {
+    buildAnalysisTable(analysisApiMode());
+  });
   $("#scan-button").addEventListener("click", scanFastqs);
   document.querySelectorAll("[data-scan-filter]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -3602,10 +3728,10 @@ function selectedAnalysisInputState() {
   const input = latestAnalysisInputStatus?.[mode] || {};
   return {
     mode,
-    ready: analysisInputMatchesSettings(input),
+    ready: !analysisPreparationRequest && analysisInputMatchesSettings(input),
     missingMessage: mode === "cdhit98"
-      ? "Prepare the CD-HIT 98.9% input in Quality control first."
-      : "Prepare the exact-allele input in Quality control first."
+      ? "Apply filters to the CD-HIT 98.9% input in Prepare data first."
+      : "Apply filters to the exact-allele input in Prepare data first."
   };
 }
 

@@ -44,8 +44,8 @@
           <button class="downstream-subtab is-active" data-downstream-tab="qc">
             <span class="downstream-nav-marker" aria-hidden="true"></span>
             <span class="downstream-nav-copy">
-              <strong>Quality control</strong>
-              <small>Confirm the shared allele input</small>
+              <strong>Prepare data</strong>
+              <small>Apply filters and prepare an allele table</small>
             </span>
           </button>
           <img class="downstream-flow-arrow" src="/assets/icons/arrow-right.svg" alt="" aria-hidden="true">
@@ -486,89 +486,47 @@
           </div>
           <div id="results-list" class="results-list"></div>
         </section>
+        <details id="qc-results-disclosure" class="qc-results-disclosure qc-section" hidden>
+          <summary class="qc-step-heading">
+            <span class="qc-step-copy">
+              <strong>QC reports and cluster files</strong>
+              <small>Created automatically by the pipeline</small>
+            </span>
+            <span class="qc-disclosure-chevron" aria-hidden="true">›</span>
+          </summary>
+          <div class="qc-results-panel">
+            <div id="qc-results-list" class="results-list"></div>
+          </div>
+        </details>
       </section>
 
       <section id="tab-qc" class="tab-panel">
         <header class="workspace-heading qc-page-heading">
           <div>
-            <h1>Quality control</h1>
-            <p>Set one shared filter, then choose the allele table used by DINEMITES and Dcifer.</p>
+            <h1>Prepare data</h1>
+            <p>Choose an allele definition, set your filters, then apply them to prepare the table.</p>
           </div>
         </header>
 
         <section id="qc-empty-state" class="qc-empty-state">
           <div>
             <h2>No completed run selected</h2>
-            <p>Quality-control files will be available after the workflow finishes.</p>
+            <p>Complete a pipeline run before preparing an analysis table. Run reports and QC files are in Results.</p>
           </div>
           <button id="qc-open-run-files" type="button">Run files</button>
         </section>
 
         <div id="qc-workspace" class="qc-workspace" hidden>
-          <details class="qc-results-disclosure">
-            <summary>
-              <span>
-                <strong>Pipeline QC results</strong>
-                <small>Read-only files and filtering summaries</small>
-              </span>
-              <span>Review</span>
-            </summary>
-            <div class="qc-results-panel">
-              <div id="qc-results-list" class="results-list"></div>
-            </div>
-          </details>
-
-          <section class="analysis-input-panel qc-section qc-define-stage">
-            <div class="qc-section-heading qc-section-heading--shared">
-              <div>
-                <h2>Filter participant visits</h2>
-                <p>Applied once to both downstream analyses.</p>
-              </div>
-            </div>
-
-            <div class="analysis-filter-block">
-              <div class="analysis-input-grid">
-                <div class="analysis-field">
-                  <div class="param-label">
-                    <label for="analysis-min-abundance-pct">Keep alleles at or above</label>
-                    <button type="button" class="param-help" aria-label="About minimum allele abundance" data-tooltip="Apply this cutoff separately within every technical replicate. Only alleles that pass in every replicate are retained and merged. SIMPLseq default: 1%.">?</button>
-                  </div>
-                  <div class="input-with-unit">
-                    <input id="analysis-min-abundance-pct" type="number" min="0" max="100" step="0.01" value="1">
-                    <span>%</span>
-                  </div>
-                </div>
-                <div class="analysis-field">
-                  <div class="param-label">
-                    <label for="analysis-abundance-denominator">Abundance denominator</label>
-                    <button type="button" class="param-help" aria-label="About allele abundance denominator" data-tooltip="The cutoff is checked separately in every technical replicate. Same locus compares an allele with reads from its locus; whole sample compares it with all reads across every locus. Same locus is recommended when locus depths differ.">?</button>
-                  </div>
-                  <select id="analysis-abundance-denominator" class="scientific-select">
-                    <option value="locus" selected>Reads at the same locus</option>
-                    <option value="sample">All reads in the sample</option>
-                  </select>
-                </div>
-              </div>
-              <p id="analysis-filter-summary" class="analysis-filter-summary">Keep alleles that pass 1% in every technical replicate, merge their counts, then require at least 100 reads at the merged locus.</p>
-              <details class="analysis-rules-disclosure">
-                <summary>How visits are prepared</summary>
-                <ol>
-                  <li>Filter each technical replicate and keep shared alleles.</li>
-                  <li>Merge confirmed counts and require 100 reads at the locus.</li>
-                  <li>Keep haplotypes seen in two samples or major in one sample.</li>
-                </ol>
-                <p><strong>Controls stay in run QC only.</strong> Undated lab samples remain available for genotyping. Longitudinal analysis requires a participant and date.</p>
-              </details>
-            </div>
-          </section>
-
           <section class="analysis-input-panel qc-section qc-choice-stage">
-            <div class="qc-section-heading qc-section-heading--shared">
-              <div>
-                <h2>Choose an allele definition</h2>
-                <p>Start with exact alleles. Use clustering only as a sensitivity check.</p>
+            <div class="qc-section-heading qc-step-heading">
+              <span class="qc-step-number" aria-hidden="true">1</span>
+              <div class="qc-step-copy">
+                <h2>Prepare an allele table</h2>
+                <p>Apply the settings below to the selected table before continuing.</p>
               </div>
             </div>
+            <div class="qc-section-content">
+            <fieldset id="analysis-preparation-controls" aria-label="Allele definition and filters">
             <div class="analysis-input-options" aria-label="Available analysis inputs">
               <section class="analysis-option analysis-option--primary">
                 <header class="analysis-option-heading">
@@ -578,23 +536,9 @@
                       <strong>Exact CIGAR alleles</strong>
                     </span>
                   </label>
-                  <span id="analysis-primary-status" class="analysis-input-state">Not prepared</span>
                 </header>
                 <p class="analysis-option-copy">Recommended for the main analysis. Keeps every exact allele definition produced by the pipeline.</p>
-                <div class="analysis-input-actions">
-                  <div class="button-row analysis-table-actions">
-                    <button id="analysis-build-primary" class="primary" type="button">Prepare exact-allele input</button>
-                    <button id="analysis-view-primary" type="button" disabled hidden>View table</button>
-                    <button id="analysis-download-primary" type="button" disabled hidden>Save copy</button>
-                  </div>
-                  <div id="analysis-primary-launch-actions" class="analysis-launch-actions" hidden>
-                    <span>Analyze with</span>
-                    <div class="button-row">
-                      <button id="qc-continue-dinemites" type="button" hidden>DINEMITES</button>
-                      <button id="qc-continue-dcifer" type="button" hidden>Dcifer</button>
-                    </div>
-                  </div>
-                </div>
+                <span id="analysis-primary-status" class="analysis-input-state">Not prepared</span>
               </section>
 
               <section class="analysis-option analysis-option--sensitivity">
@@ -605,48 +549,126 @@
                       <strong>CD-HIT 98.9% clusters</strong>
                     </span>
                   </label>
-                  <span id="analysis-cdhit-status" class="analysis-input-state">Not prepared</span>
                 </header>
-                <p class="analysis-option-copy">Uses existing broader clusters to test whether grouping changes the interpretation.</p>
-                <div class="analysis-input-actions">
-                  <div class="button-row analysis-table-actions">
-                     <button id="analysis-build-table" type="button">Prepare CD-HIT input</button>
-                    <button id="analysis-view-table" type="button" disabled hidden>View table</button>
-                    <button id="analysis-download-table" type="button" disabled hidden>Save copy</button>
-                  </div>
-                  <div id="analysis-cdhit-launch-actions" class="analysis-launch-actions" hidden>
-                    <span>Analyze with</span>
-                    <div class="button-row">
-                      <button id="analysis-open-cdhit-dinemites" type="button" disabled hidden>DINEMITES</button>
-                      <button id="analysis-open-cdhit-dcifer" type="button" disabled hidden>Dcifer</button>
-                    </div>
-                  </div>
-                </div>
+                <p class="analysis-option-copy">Optional sensitivity check. Uses existing broader clusters to test whether grouping changes the interpretation.</p>
+                <span id="analysis-cdhit-status" class="analysis-input-state">Not prepared</span>
               </section>
 
             </div>
-            <div id="analysis-input-message" class="inline-message"></div>
+            <div class="analysis-filter-block">
+              <div class="analysis-input-grid">
+                <div class="analysis-field">
+                  <div class="param-label">
+                    <label for="analysis-min-abundance-pct">Minimum allele abundance</label>
+                    <button type="button" class="param-help" aria-label="About minimum allele abundance" data-tooltip="Apply this cutoff separately within every technical replicate. Only alleles that pass in every replicate are retained and merged. SIMPLseq default: 1%.">?</button>
+                  </div>
+                  <div class="input-with-unit">
+                    <input id="analysis-min-abundance-pct" type="number" min="0" max="100" step="0.01" value="1" required aria-describedby="analysis-filter-validation">
+                    <span>%</span>
+                  </div>
+                </div>
+                <div class="analysis-field">
+                  <div class="param-label">
+                    <label for="analysis-abundance-denominator">Compare abundance with</label>
+                    <button type="button" class="param-help" aria-label="About allele abundance denominator" data-tooltip="The cutoff is checked separately in every technical replicate. Same locus compares an allele with reads from its locus; whole sample compares it with all reads across every locus. Same locus is recommended when locus depths differ.">?</button>
+                  </div>
+                  <select id="analysis-abundance-denominator" class="scientific-select">
+                    <option value="locus" selected>Reads at the same locus</option>
+                    <option value="sample">All reads in the sample</option>
+                  </select>
+                </div>
+              </div>
+              <p id="analysis-filter-validation" class="analysis-filter-validation" role="alert" hidden>Enter a percentage from 0 to 100.</p>
+              <details class="analysis-rules-disclosure">
+                <summary>How samples and replicates are prepared</summary>
+                <p id="analysis-filter-summary" class="analysis-filter-summary">Keep alleles that pass 1% in every technical replicate, merge their counts, then require at least 100 reads at the merged locus.</p>
+                <ol>
+                  <li>Filter each technical replicate and keep shared alleles.</li>
+                  <li>Merge confirmed counts and require 100 reads at the locus.</li>
+                  <li>Keep haplotypes seen in two samples or major in one sample.</li>
+                </ol>
+                <p><strong>Controls stay in run QC only.</strong> Undated lab samples remain available for genotyping. Longitudinal analysis requires a participant and date.</p>
+              </details>
+            </div>
+            </fieldset>
+            <div id="analysis-apply-state" class="analysis-apply-state" data-state="missing">
+              <div class="analysis-apply-copy" role="status" aria-live="polite">
+                <strong id="analysis-apply-title">Apply filters to prepare this table</strong>
+                <p id="analysis-apply-detail">Selected: Exact CIGAR alleles</p>
+                <p id="analysis-apply-next">Use the filter settings above.</p>
+              </div>
+              <div id="analysis-apply-buttons" class="button-row">
+                <button id="analysis-build-primary" class="primary" type="button">Apply filters and prepare table</button>
+                <button id="analysis-build-table" class="primary" type="button" hidden>Apply filters and prepare table</button>
+              </div>
+            </div>
+            <div id="analysis-input-message" class="inline-message" role="status" aria-live="polite"></div>
+            <div class="analysis-shared-actions">
+              <p id="analysis-selected-label" aria-live="polite">Selected: Exact CIGAR alleles</p>
+              <div id="analysis-primary-actions" class="analysis-input-actions">
+                <div class="button-row analysis-table-actions">
+                  <button id="analysis-view-primary" type="button" disabled>View table</button>
+                  <button id="analysis-download-primary" type="button" disabled>Save copy</button>
+                </div>
+              </div>
+              <div id="analysis-cdhit-actions" class="analysis-input-actions" hidden>
+                <div class="button-row analysis-table-actions">
+                  <button id="analysis-view-table" type="button" disabled>View table</button>
+                  <button id="analysis-download-table" type="button" disabled>Save copy</button>
+                </div>
+              </div>
+              <button id="analysis-rebuild" class="analysis-rebuild" type="button" hidden>Rebuild table</button>
+            </div>
+            <div class="analysis-continue-row">
+              <div>
+                <strong>Continue to analysis</strong>
+                <p id="analysis-continue-note">Prepare the selected table above to continue.</p>
+              </div>
+              <div id="analysis-primary-launch-actions" class="analysis-launch-actions">
+                <div class="button-row">
+                  <button id="qc-continue-dinemites" type="button" disabled>DINEMITES</button>
+                  <button id="qc-continue-dcifer" type="button" disabled>Dcifer</button>
+                </div>
+              </div>
+              <div id="analysis-cdhit-launch-actions" class="analysis-launch-actions" hidden>
+                <div class="button-row">
+                  <button id="analysis-open-cdhit-dinemites" type="button" disabled>DINEMITES</button>
+                  <button id="analysis-open-cdhit-dcifer" type="button" disabled>Dcifer</button>
+                </div>
+              </div>
+            </div>
+            </div>
           </section>
-          <div class="qc-guide-stage">
-            <span class="qc-guide-marker" aria-hidden="true"></span>
-            <strong>Observe</strong>
-          </div>
-          <section class="analysis-input-panel qc-section qc-guided-body" aria-labelledby="clonal-heading">
-            <h2 id="clonal-heading">Observed clonal turnover</h2>
+          <details class="qc-section qc-turnover" aria-labelledby="clonal-heading">
+            <summary class="qc-step-heading">
+              <span class="qc-step-number" aria-hidden="true">2</span>
+              <span class="qc-step-copy">
+                <strong id="clonal-heading">Allele changes across visits</strong>
+                <small>Observed clonal turnover · optional summary</small>
+              </span>
+              <span class="qc-data-badge">Longitudinal data</span>
+              <span class="qc-disclosure-chevron" aria-hidden="true">›</span>
+            </summary>
+            <div class="qc-section-content">
             <p>Summarize first and last observed alleles for each participant and locus. Rates use intervals between genotyped visits. Missing genotypes do not count as allele absence.</p>
-            <label for="clonal-mode">Allele definition</label>
-            <select id="clonal-mode" class="scientific-select">
-              <option value="primary">Exact CIGAR alleles</option>
-              <option value="cdhit98">CD-HIT 98.9% clusters</option>
-            </select>
-            <div class="button-row"><button id="clonal-build" type="button">Calculate clonal turnover</button></div>
+            <div class="qc-turnover-controls">
+              <div>
+                <label for="clonal-mode">Allele definition</label>
+                <select id="clonal-mode" class="scientific-select">
+                  <option value="primary">Exact CIGAR alleles</option>
+                  <option value="cdhit98">CD-HIT 98.9% clusters</option>
+                </select>
+              </div>
+              <button id="clonal-build" type="button">Calculate clonal turnover</button>
+            </div>
             <p id="clonal-message" class="inline-message" aria-live="polite"></p>
             <div id="clonal-downloads" class="button-row"></div>
             <div class="table-wrap"><table id="clonal-table" hidden>
               <thead><tr><th>Participant</th><th>Locus</th><th>Visits</th><th>Acquisitions</th><th>Clearances</th><th>Turnover / interval</th></tr></thead>
               <tbody></tbody>
             </table></div>
-          </section>
+            </div>
+          </details>
         </div>
       </section>
 

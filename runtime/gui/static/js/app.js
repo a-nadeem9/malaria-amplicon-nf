@@ -173,13 +173,13 @@ function normalizePathInput(selector) {
 }
 
 function normalizePathInputs() {
-  ["#fastq-dir", "#metadata-path", "#kelt-barcode-map", "#run-samples", "#outdir", "#results-outdir"].forEach(normalizePathInput);
+  ["#fastq-dir", "#metadata-path", "#run-samples", "#outdir", "#results-outdir"].forEach(normalizePathInput);
   syncPathTitles();
   updateSamplePathHelp();
 }
 
 function syncPathTitles() {
-  ["#fastq-dir", "#metadata-path", "#kelt-barcode-map", "#run-samples", "#outdir", "#results-outdir"].forEach((selector) => {
+  ["#fastq-dir", "#metadata-path", "#run-samples", "#outdir", "#results-outdir"].forEach((selector) => {
     const node = $(selector);
     if (node) node.title = node.value || "";
   });
@@ -947,9 +947,10 @@ function renderMetadataCalendarPreview(payload) {
   if (!container || !status || !payload) return;
   const columns = metadataContract.columns || {};
   const hasIdentity = Boolean(columns.participant_id);
+  const hasSample = Boolean(columns.sample_id);
   const hasVisit = Boolean(columns.collection_date || columns.month);
   const hasDetection = Boolean(columns.metadata_pcr);
-  metadataContractValid = hasIdentity && hasVisit && payload.ok !== false;
+  metadataContractValid = (hasSample || (hasIdentity && hasVisit)) && payload.ok !== false;
   const counts = {positive: 0, negative: 0, ignore: 0, review: 0};
   (payload.detection_values || []).forEach((item) => {
     const state = metadataContract.detection_value_map[item.value] || item.state || "review";
@@ -963,9 +964,15 @@ function renderMetadataCalendarPreview(payload) {
   if (!metadataContractValid) {
     text(title, "Mapping needed");
     text(headline, "Metadata mapping incomplete");
-    text(detail, "Choose a participant column and a complete date or visit-month column.");
+    text(detail, "Choose a sample ID or FASTQ filename column, or a participant column with a date or visit month.");
     status.className = "metadata-contract__status is-review";
     text(status, "Needs mapping");
+  } else if (!hasIdentity || !hasVisit) {
+    text(title, "Samples mapped");
+    text(headline, `${Number(payload.records || 0).toLocaleString()} sample metadata rows`);
+    text(detail, "Ready for sample-level analysis. Participant and visit information are needed for longitudinal analysis.");
+    status.className = "metadata-contract__status is-ready";
+    text(status, "Ready");
   } else if (!hasDetection) {
     text(title, "Dates mapped");
     text(headline, `${Number(payload.records || 0).toLocaleString()} dated metadata rows`);
@@ -1029,7 +1036,9 @@ async function inspectMetadata() {
     const hasDetection = Boolean(metadataContract.columns?.metadata_pcr);
     setMetadataMessage(
       metadataContractValid
-        ? hasDetection
+        ? !(metadataContract.columns?.participant_id && (metadataContract.columns?.collection_date || metadataContract.columns?.month))
+          ? "Sample metadata mapped. Dates are optional for lab genotyping."
+          : hasDetection
           ? "Metadata mapped. Confirm detection values before scanning."
           : "Metadata mapped for dates. Add PCR/qPCR results for a complete visit calendar."
         : "Complete the metadata mapping before scanning.",
@@ -1115,7 +1124,6 @@ function sampleStatus(item) {
     boolish(item.inferred_year)
     || boolish(item.inferred_day)
     || metadataStatus === "ambiguous"
-    || !item.collection_date
   ) {
     return {label: "Review", tone: "warning", key: "review"};
   }
@@ -1508,7 +1516,7 @@ async function scanFastqs() {
     if (details) details.open = true;
     const reviewDetails = $("#metadata-review-details");
     if (reviewDetails) reviewDetails.open = true;
-    setMetadataMessage("Map the participant and visit columns before scanning.", "warn");
+    setMetadataMessage("Map the sample ID, or the participant and visit columns, before scanning.", "warn");
     $("#metadata-contract")?.scrollIntoView({behavior: "smooth", block: "center"});
     return;
   }
@@ -1676,7 +1684,6 @@ function runPayload() {
     metadata_sheet: $("#metadata-sheet") ? $("#metadata-sheet").value : "",
     metadata_date_order: $("#metadata-date-order")?.value || "auto",
     metadata_contract: metadataContractPayload(),
-    kelt_barcode_map: $("#kelt-barcode-map")?.value || "",
     fallback_collection_year: $("#fallback-collection-year") ? $("#fallback-collection-year").value : "",
     fallback_collection_day: $("#fallback-collection-day") ? $("#fallback-collection-day").value : "27",
     libraries: selectedLibraries.length === availableLibraries.length ? [] : selectedLibraries,
@@ -1846,76 +1853,6 @@ async function chooseMetadataFile() {
     if (button) {
       button.disabled = false;
       text(button, oldLabel || "Choose file");
-    }
-  }
-}
-
-function setKeltBarcodeMessage(message, tone = "") {
-  const node = $("#kelt-barcode-help");
-  if (!node) return;
-  node.className = `field-help${tone ? ` ${tone}` : ""}`;
-  text(node, message);
-}
-
-async function inspectKeltBarcodeMap() {
-  const path = $("#kelt-barcode-map")?.value.trim() || "";
-  const container = $("#kelt-barcode-inspection");
-  if (!container) return;
-  if (!path) {
-    container.hidden = true;
-    container.replaceChildren();
-    setKeltBarcodeMessage("CSV or TSV with sample_id, forward_barcode, and reverse_barcode columns. Selecting a map enables exact barcode-pair matching.");
-    return;
-  }
-  container.hidden = false;
-  container.className = "metadata-inspection is-loading";
-  text(container, "Checking expected KELT barcode pairs...");
-  try {
-    const payload = await postJson("/api/kelt/inspect", {path});
-    container.className = "metadata-inspection";
-    const libraryText = (payload.libraries || []).length
-      ? ` across ${(payload.libraries || []).length} labelled libraries`
-      : "";
-    text(container, `${payload.pairs} sample barcode pairs loaded${libraryText}. Exact matching will run after adapter trimming.`);
-    setKeltBarcodeMessage("KELT contamination QC will run for every selected sample.", "ok");
-  } catch (error) {
-    container.className = "metadata-inspection has-error";
-    text(container, error.message || "The KELT barcode map could not be read.");
-    setKeltBarcodeMessage("Fix or remove this map before starting the workflow.", "warn");
-  }
-}
-
-async function chooseKeltBarcodeMap() {
-  const button = $("#choose-kelt-barcode-map");
-  const oldLabel = button?.textContent || "Choose file";
-  if (button) {
-    button.disabled = true;
-    text(button, "Opening...");
-  }
-  setKeltBarcodeMessage("Opening KELT barcode map picker...");
-  try {
-    const payload = await withTimeout(
-      chooseNativeFile({
-        initial: $("#kelt-barcode-map")?.value || $("#fastq-dir")?.value || workspaceRoot || ".",
-        prompt: "Select expected KELT barcode map",
-        kind: "kelt"
-      }),
-      NATIVE_PICKER_TIMEOUT_MS,
-      "File picker timed out"
-    );
-    if (payload.selected && payload.path) {
-      $("#kelt-barcode-map").value = payload.path;
-      saveSettings();
-      await inspectKeltBarcodeMap();
-      return;
-    }
-    setKeltBarcodeMessage("No KELT barcode map selected. This QC module remains off.");
-  } catch (error) {
-    setKeltBarcodeMessage("The system file chooser could not open. Paste the barcode map path above.", "warn");
-  } finally {
-    if (button) {
-      button.disabled = false;
-      text(button, oldLabel);
     }
   }
 }
@@ -2791,15 +2728,12 @@ async function renderInlineRunSummary(url, container) {
 function renderResultsDashboard(payload, list) {
   const report = payload.report;
   const coreFiles = (payload.core_files || []).filter((item) => item.status === "ready" && item.label !== ASV_FILTERING_SUMMARY_LABEL);
-  const keltReport = payload.kelt_report;
-  const keltFiles = (payload.kelt_files || []).filter((item) => item.status === "ready");
   const reportReady = Boolean(report && report.status === "ready" && report.view_url);
-  const keltReportReady = Boolean(keltReport && keltReport.status === "ready" && keltReport.view_url);
 
   const dashboard = document.createElement("div");
   dashboard.className = "results-dashboard";
 
-  if (!reportReady && !coreFiles.length && !keltReportReady && !keltFiles.length) {
+  if (!reportReady && !coreFiles.length) {
     const empty = document.createElement("div");
     empty.className = "results-empty";
     text(empty, "No completed outputs yet. Report and table links appear here as the workflow finishes.");
@@ -2834,26 +2768,6 @@ function renderResultsDashboard(payload, list) {
     text(count, `${coreFiles.length} ${coreFiles.length === 1 ? "table" : "tables"}`);
     tableHeader.append(heading, count);
     dashboard.append(tableHeader, resultTable(coreFiles, "No completed output tables yet."));
-  }
-
-  if (keltReportReady || keltFiles.length) {
-    const keltHeader = document.createElement("div");
-    keltHeader.className = "results-section-heading results-section-heading--kelt";
-    const heading = document.createElement("h3");
-    text(heading, "KELT contamination QC");
-    const detail = document.createElement("span");
-    text(detail, "Well-specific inline-barcode checks");
-    keltHeader.append(heading, detail);
-    dashboard.appendChild(keltHeader);
-    if (keltReportReady) {
-      const actions = document.createElement("div");
-      actions.className = "results-kelt-report";
-      const copy = document.createElement("span");
-      text(copy, "Contamination summary and samples requiring review");
-      actions.append(copy, resultAction(keltReport.view_url, "View report", true, "report", {label: "KELT contamination QC"}));
-      dashboard.appendChild(actions);
-    }
-    if (keltFiles.length) dashboard.appendChild(resultTable(keltFiles, "No KELT QC tables are available."));
   }
 
   list.appendChild(dashboard);
@@ -3000,7 +2914,7 @@ async function buildAnalysisTable(mode = "cdhit98") {
     const summary = payload.summary || {};
     const output = summary.output || {};
     if (primary) {
-      text(msg, `Exact-allele input ready: ${Number(output.participant_visits || 0).toLocaleString()} participant visits and ${Number(output.alleles || 0).toLocaleString()} alleles.`);
+      text(msg, `Exact-allele input ready: ${Number(output.biological_samples || 0).toLocaleString()} samples, ${Number(output.participant_visits || 0).toLocaleString()} dated visits and ${Number(output.alleles || 0).toLocaleString()} alleles.`);
     } else {
       const clusters = Number(summary.clusters || output.alleles || 0).toLocaleString();
       text(msg, `CD-HIT input ready: ${clusters} locus-specific clusters after analysis filtering and replicate merging. CD-HIT was not rerun.`);
@@ -3032,7 +2946,7 @@ function updateAnalysisInputAvailability(inputs = {}) {
     primaryStatus.className = `analysis-input-state${primaryReady ? " is-ready" : ""}`;
     if (primaryReady) {
       const output = primary.summary?.output || {};
-      text(primaryStatus, `Ready - ${Number(output.participant_visits || primary.samples || 0).toLocaleString()} visits, ${Number(output.alleles || primary.alleles || 0).toLocaleString()} alleles`);
+      text(primaryStatus, `Ready - ${Number(output.biological_samples ?? primary.samples ?? 0).toLocaleString()} samples, ${Number(output.participant_visits || 0).toLocaleString()} dated visits, ${Number(output.alleles ?? primary.alleles ?? 0).toLocaleString()} alleles`);
     } else {
       text(primaryStatus, primary.available ? "Settings changed - rebuild required" : "Not built");
     }
@@ -3583,11 +3497,6 @@ function bindEvents() {
   });
   $("#browse-button").addEventListener("click", chooseFastqFolder);
   $("#choose-metadata-file").addEventListener("click", chooseMetadataFile);
-  $("#choose-kelt-barcode-map")?.addEventListener("click", chooseKeltBarcodeMap);
-  $("#kelt-barcode-map")?.addEventListener("change", () => {
-    saveSettings();
-    inspectKeltBarcodeMap();
-  });
   $("#metadata-sheet")?.addEventListener("change", () => {
     metadataContract.columns = {};
     metadataContract.detection_value_map = {};
@@ -4879,7 +4788,6 @@ async function init() {
   } catch (_error) {
     renderCommonPaths([]);
   }
-  if ($("#kelt-barcode-map")?.value.trim()) inspectKeltBarcodeMap();
   resetRunDisplay();
   const activeRun = await fetchActiveRun();
   if (activeRun?.active && activeRun.outdir) {

@@ -11,7 +11,6 @@ process PREFLIGHT {
   output:
   path 'preflight.tsv', emit: report
   path 'amplicon_geometry.tsv', emit: geometry
-  path 'barcode_readiness.tsv', emit: barcode
 
   script:
   def samples_root = file(params.samples).isAbsolute() ? file(params.samples).parent : "${projectDir}/${file(params.samples).parent}"
@@ -22,9 +21,6 @@ process PREFLIGHT {
     --amplicons "${amplicons}" \
     --report preflight.tsv \
     --geometry amplicon_geometry.tsv \
-    --barcode barcode_readiness.tsv \
-    --inline-barcodes-enabled ${params.inline_barcodes_enabled} \
-    --sentinel-locus "${params.sentinel_locus}" \
     --samples-root "${samples_root}"
   python -m simplseq.progress emit --file "${params.outdir}/progress.jsonl" --stage prepare_inputs --status complete
   """
@@ -94,6 +90,7 @@ process DADA2_PIPELINE {
   publishDir "${params.outdir}/run_dada2/intermediate/dada2_nop", mode: 'copy', overwrite: true, pattern: 'nop_ASVBimeras.txt', saveAs: { 'ASVBimeras.txt' }
   publishDir "${params.outdir}/run_dada2/intermediate/dada2_nop", mode: 'copy', overwrite: true, pattern: 'correctedASV.txt'
   publishDir "${params.outdir}/logs", mode: 'copy', overwrite: true, pattern: 'dada2_pipeline.log'
+  publishDir "${params.outdir}/qc", mode: 'copy', overwrite: true, pattern: 'sample_read_qc.tsv'
 
   input:
   path json
@@ -106,10 +103,10 @@ process DADA2_PIPELINE {
 
   output:
   path 'seqtab_iseq.tsv', emit: seqtab
+  path 'sample_read_qc.tsv', emit: sample_qc
   path 'op_ASVBimeras.txt', emit: op_bimera
   path 'nop_ASVBimeras.txt', emit: nop_bimera
   path 'correctedASV.txt', emit: corrected_asv
-  path 'preprocess_fq', emit: preprocessed_fastqs
   path 'dada2_pipeline.log', emit: log
 
   script:
@@ -130,44 +127,11 @@ process DADA2_PIPELINE {
   } 2>&1 | tee dada2_pipeline.log
 
   cp run_dada2/seqtab_iseq.tsv seqtab_iseq.tsv
+  cp run_dada2/sample_read_qc.tsv sample_read_qc.tsv
   cp run_dada2/dada2_op/ASVBimeras.txt op_ASVBimeras.txt
   cp run_dada2/dada2_nop/ASVBimeras.txt nop_ASVBimeras.txt
   cp run_dada2/dada2_nop/correctedASV.txt correctedASV.txt
   python -m simplseq.progress emit --file "${params.outdir}/progress.jsonl" --stage dada2 --status complete
-  """
-}
-
-process KELT_CONTAMINATION {
-  tag 'kelt_qc'
-  cpus params.kelt_cpus
-  memory '4 GB'
-  time '2h'
-  publishDir "${params.outdir}/qc/kelt", mode: 'copy', overwrite: true
-
-  input:
-  path preprocessed_fastqs
-  path samples
-
-  output:
-  path 'kelt_contamination_calls.tsv', emit: calls
-  path 'kelt_barcode_counts.tsv', emit: counts
-  path 'kelt_contamination_summary.json', emit: summary
-  path 'kelt_contamination_report.html', emit: report
-  path 'kelt_contamination.log', emit: log
-
-  script:
-  """
-  {
-    echo "[SIMPLseq/Nextflow] \$(date) starting KELT contamination QC"
-    python "\${SIMPLSEQ_KELT_DETECTION}" \
-      --fastq-dir "${preprocessed_fastqs}" \
-      --samples "${samples}" \
-      --outdir . \
-      --mismatches ${params.kelt_barcode_mismatches} \
-      --trace-max-reads ${params.kelt_trace_max_reads} \
-      --workers ${task.cpus}
-    echo "[SIMPLseq/Nextflow] \$(date) finished KELT contamination QC"
-  } 2>&1 | tee kelt_contamination.log
   """
 }
 
@@ -561,9 +525,6 @@ workflow {
     preflight.report,
     input_fastq_md5s
   )
-  if (params.inline_barcodes_enabled) {
-    KELT_CONTAMINATION(dada2.preprocessed_fastqs, samples)
-  }
   stage2 = PREPARE_STAGE2(dada2.seqtab, dada2.op_bimera, dada2.nop_bimera, dada2.corrected_asv)
   post = POSTPROCESS_DADA2(stage2.strict_seqtab, stage2.strict_bimera, reference, snv_filters, samples)
   stage3 = PREPARE_STAGE3(post.mapped, stage2.strict_seqtab)

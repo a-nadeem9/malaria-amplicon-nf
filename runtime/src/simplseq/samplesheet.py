@@ -12,7 +12,6 @@ from typing import Any
 from pathlib import Path
 
 from .metadata import METADATA_FIELDS, enrich_rows_with_metadata
-from .kelt import enrich_rows_with_kelt_barcodes
 from .pathutils import user_path
 
 
@@ -72,7 +71,6 @@ SAMPLE_FIELDS = [
     "inferred_day",
     "date_note",
 ]
-KELT_FIELDS = ["expected_fwd_barcode", "expected_rev_barcode", "kelt_barcode_source"]
 
 READ_SUFFIXES = [
     ("_R1.fastq.gz", "_R2.fastq.gz"),
@@ -658,7 +656,6 @@ def write_samples_csv(
     metadata_sheet: str = "",
     metadata_date_order: str = "auto",
     metadata_columns: dict[str, str] | None = None,
-    kelt_barcode_map: Path | str | None = None,
     libraries: list[str] | tuple[str, ...] | set[str] | None = None,
 ) -> tuple[int, list[str]]:
     output = user_path(output_csv).resolve()
@@ -680,13 +677,9 @@ def write_samples_csv(
         date_order=metadata_date_order,
         column_overrides=metadata_columns,
     )
-    if kelt_barcode_map:
-        rows = enrich_rows_with_kelt_barcodes(rows, kelt_barcode_map)
     fieldnames = list(SAMPLE_FIELDS)
     if metadata_path:
         fieldnames.extend(field for field in METADATA_FIELDS if field not in fieldnames)
-    if kelt_barcode_map:
-        fieldnames.extend(field for field in KELT_FIELDS if field not in fieldnames)
     with output.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
         writer.writeheader()

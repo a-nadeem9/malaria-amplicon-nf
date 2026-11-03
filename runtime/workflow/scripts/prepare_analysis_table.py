@@ -29,7 +29,7 @@ from simplseq.panel import panel_profile  # noqa: E402
 from simplseq.samplesheet import derive_biological_sample_id  # noqa: E402
 
 
-REQUIRED_SAMPLE_COLUMNS = {"sample_id", "participant_id", "collection_date", "replicate"}
+REQUIRED_SAMPLE_COLUMNS = {"sample_id"}
 
 
 def clean_text(value: object) -> str:
@@ -52,7 +52,9 @@ def biological_metadata(samples: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, 
     if missing:
         raise ValueError(f"samples.csv is missing required columns: {', '.join(missing)}")
 
-    for column in REQUIRED_SAMPLE_COLUMNS:
+    for column in ("sample_id", "participant_id", "collection_date", "replicate"):
+        if column not in samples.columns:
+            samples[column] = ""
         samples[column] = samples[column].map(clean_text)
     if samples["sample_id"].eq("").any() or samples["sample_id"].duplicated().any():
         raise ValueError("samples.csv sample_id values must be non-empty and unique.")
@@ -86,12 +88,13 @@ def biological_metadata(samples: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, 
     controls = ~sample_type.eq("sample")
     missing_identity = samples["participant_id"].eq("") | samples["collection_date"].eq("")
     missing_biological = samples["biological_sample_id"].eq("")
-    eligible = ~controls & ~missing_identity & ~missing_biological & samples["sample_id"].ne("")
+    eligible = ~controls & ~missing_biological & samples["sample_id"].ne("")
     audit = {
         "sample_sheet_rows": int(len(samples)),
         "controls_excluded": int(controls.sum()),
-        "unassigned_or_undated_excluded": int((~controls & missing_identity).sum()),
-        "missing_biological_sample_id_excluded": int((~controls & ~missing_identity & missing_biological).sum()),
+        "unassigned_or_undated_excluded": 0,
+        "rows_without_longitudinal_identity": int((eligible & missing_identity).sum()),
+        "missing_biological_sample_id_excluded": int((~controls & missing_biological).sum()),
         "biological_sequencing_rows": int(eligible.sum()),
         "legacy_biological_ids_repaired": repaired_biological_ids,
     }
@@ -375,6 +378,11 @@ def build_analysis_table(args: argparse.Namespace) -> dict[str, object]:
     # Longitudinal summaries use this stable name because an allele can be
     # represented by several sequencing observations before biological merge.
     canonical["max_abundance_pct"] = canonical["abundance_pct"]
+    longitudinal_calls = canonical.loc[
+        canonical["participant_id"].ne("")
+        & canonical["collection_date"].ne("")
+        & pd.to_datetime(canonical["collection_date"], errors="coerce").notna()
+    ].copy()
 
     retained_columns = sorted(retained["allele_column"].unique())
     if retained_columns:
@@ -460,10 +468,10 @@ def build_analysis_table(args: argparse.Namespace) -> dict[str, object]:
             "maximum_replicates_per_visit": int(biological_replicates["n_replicates"].max()),
         },
         "output": {
-            "participants": int(canonical["participant_id"].nunique()) if not canonical.empty else 0,
+            "participants": int(canonical.loc[canonical["participant_id"].ne(""), "participant_id"].nunique()),
             "participant_visits": int(
-                canonical[["participant_id", "collection_date"]].drop_duplicates().shape[0]
-            ) if not canonical.empty else 0,
+                longitudinal_calls[["participant_id", "collection_date"]].drop_duplicates().shape[0]
+            ),
             "biological_samples": int(canonical["sample_id"].nunique()) if not canonical.empty else 0,
             "loci": int(canonical["locus"].nunique()) if not canonical.empty else 0,
             "alleles": int(canonical[["locus", "allele"]].drop_duplicates().shape[0]) if not canonical.empty else 0,
@@ -503,16 +511,28 @@ def build_analysis_table(args: argparse.Namespace) -> dict[str, object]:
             if fatal:
                 raise ValueError(" ".join(fatal))
 
-        calendar, visit_audit, excluded_metadata = build_visit_calendar(
-            canonical,
-            raw_samples,
-            catalog,
-            fallback_year=clean_text(getattr(args, "fallback_year", "")),
-            fallback_day=clean_text(getattr(args, "fallback_day", "27")) or "27",
-            metadata_contract=metadata_contract,
-        )
-        dinemites_input, qpcr_only = build_dinemites_inputs(canonical, calendar)
-        dynamics = build_observed_dynamics(canonical) if not canonical.empty else {
+        dated_rows = samples["participant_id"].ne("") & samples["collection_date"].ne("")
+        if dated_rows.any():
+            calendar, visit_audit, excluded_metadata = build_visit_calendar(
+                longitudinal_calls,
+                raw_samples,
+                catalog,
+                fallback_year=clean_text(getattr(args, "fallback_year", "")),
+                fallback_day=clean_text(getattr(args, "fallback_day", "27")) or "27",
+                metadata_contract=metadata_contract,
+            )
+        else:
+            # Undated laboratory samples have no visit calendar to model.
+            columns = ["participant_id", "collection_date", "time", "season", "status",
+                       "visit_class", "pcr_state", "raw_pcr_values", "audit_note", "source",
+                       "has_genotype", "review_required", "included_in_dinemites", "participant_has_genotype"]
+            calendar = pd.DataFrame({column: pd.Series(dtype="bool" if column in {
+                "has_genotype", "review_required", "included_in_dinemites", "participant_has_genotype"
+            } else "object") for column in columns})
+            visit_audit = calendar.copy()
+            excluded_metadata = pd.DataFrame()
+        dinemites_input, qpcr_only = build_dinemites_inputs(longitudinal_calls, calendar)
+        dynamics = build_observed_dynamics(longitudinal_calls) if not longitudinal_calls.empty else {
             "host_time_summary": pd.DataFrame(),
             "allele_lifetimes": pd.DataFrame(),
             "turnover_metrics": pd.DataFrame(),
@@ -536,7 +556,7 @@ def build_analysis_table(args: argparse.Namespace) -> dict[str, object]:
             table.to_csv(target, sep="\t", index=False)
             longitudinal_files[name] = target
 
-        longitudinal_payload = longitudinal_summary(calendar, canonical)
+        longitudinal_payload = longitudinal_summary(calendar, longitudinal_calls)
         longitudinal_payload["panel"] = summary["panel"]
         longitudinal_payload["metadata"] = catalog_profile(catalog, metadata_path)
         longitudinal_payload["metadata"]["contract"] = metadata_contract

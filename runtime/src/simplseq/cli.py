@@ -189,8 +189,6 @@ def cmd_run_direct(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             cpus=args.cpus,
             memory=args.memory,
-            kelt_enabled=args.kelt,
-            kelt_barcode_map=user_path(args.kelt_barcode_map) if args.kelt_barcode_map else None,
         )
     except Exception as exc:
         completed_at = dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
@@ -319,8 +317,6 @@ def add_direct_run_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--memory", default="", help="Memory for heavy local stages, e.g. '12 GB'")
     parser.add_argument("--no-resume", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
-    parser.add_argument("--kelt", action="store_true", help="Run KELT inline-barcode contamination QC")
-    parser.add_argument("--kelt-barcode-map", default="", help="Source barcode map recorded in run provenance")
     parser.add_argument("--worker-token", default="", help=argparse.SUPPRESS)
     parser.add_argument("--worker-state", default="", help=argparse.SUPPRESS)
 

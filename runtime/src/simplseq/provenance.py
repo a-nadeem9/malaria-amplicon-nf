@@ -40,8 +40,6 @@ PINNED_PARAMETER_KEYS = [
     "cigar_exclude_bimeras",
     "cdhit_identity",
     "cdhit_word_size",
-    "inline_barcodes_enabled",
-    "sentinel_locus",
 ]
 
 

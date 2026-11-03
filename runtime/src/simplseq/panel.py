@@ -51,7 +51,6 @@ def panel_profile(loci: Iterable[object]) -> dict[str, object]:
         "reference_locus_count": len(SIMPLSEQ_PANEL),
         "all_detected_loci": raw_loci,
         "is_complete_simplseq_panel": len(ordered_core) == len(SIMPLSEQ_PANEL),
-        "kelt_sentinel_detected": "KELT" in detected_core,
         "interpretation": (
             "SIMPLseq panel or subset with additional loci"
             if ordered_core and additional

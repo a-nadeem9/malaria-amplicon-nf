@@ -87,8 +87,6 @@ def _validate_options(raw: object, outdir: Path) -> dict[str, Any]:
         "dry_run",
         "cpus",
         "memory",
-        "kelt_enabled",
-        "kelt_barcode_map",
     }
     unknown = sorted(set(raw) - allowed)
     if unknown:
@@ -96,9 +94,8 @@ def _validate_options(raw: object, outdir: Path) -> dict[str, Any]:
 
     resume = raw.get("resume", True)
     dry_run = raw.get("dry_run", False)
-    kelt_enabled = raw.get("kelt_enabled", False)
-    if not isinstance(resume, bool) or not isinstance(dry_run, bool) or not isinstance(kelt_enabled, bool):
-        raise ValueError("resume, dry_run, and kelt_enabled must be true or false.")
+    if not isinstance(resume, bool) or not isinstance(dry_run, bool):
+        raise ValueError("resume and dry_run must be true or false.")
 
     cpus = raw.get("cpus")
     if cpus is not None:
@@ -122,19 +119,12 @@ def _validate_options(raw: object, outdir: Path) -> dict[str, Any]:
     if work_dir.exists() and not work_dir.is_dir():
         raise ValueError("Nextflow work_dir must be a folder.")
 
-    barcode_value = str(raw.get("kelt_barcode_map", "") or "").strip()
-    barcode_map = Path(barcode_value).expanduser().resolve() if barcode_value else None
-    if barcode_map is not None and not barcode_map.is_file():
-        raise ValueError(f"KELT barcode map is unavailable: {barcode_map}")
-
     return {
         "resume": resume,
         "work_dir": str(work_dir),
         "dry_run": dry_run,
         "cpus": cpus,
         "memory": memory,
-        "kelt_enabled": kelt_enabled,
-        "kelt_barcode_map": str(barcode_map) if barcode_map else "",
     }
 
 
@@ -231,8 +221,6 @@ def execute_job(spec_path: Path, expected_token: str) -> int:
             dry_run=options["dry_run"],
             cpus=options["cpus"],
             memory=options["memory"],
-            kelt_enabled=options["kelt_enabled"],
-            kelt_barcode_map=Path(options["kelt_barcode_map"]) if options["kelt_barcode_map"] else None,
         )
         returncode = int(result.returncode)
         status = "dry_run" if options["dry_run"] and returncode == 0 else ("complete" if returncode == 0 else "failed")
@@ -275,8 +263,6 @@ def launch_job(
     dry_run: bool = False,
     cpus: int | None = None,
     memory: str | None = None,
-    kelt_enabled: bool = False,
-    kelt_barcode_map: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> int:
     outdir = outdir.expanduser().resolve()
@@ -301,8 +287,6 @@ def launch_job(
                 "dry_run": dry_run,
                 "cpus": cpus,
                 "memory": memory,
-                "kelt_enabled": kelt_enabled,
-                "kelt_barcode_map": str(kelt_barcode_map.expanduser().resolve()) if kelt_barcode_map else "",
             },
             "state_file": str(state_file),
             "spec_path": str(spec_path),

@@ -256,6 +256,34 @@ if (filter == TRUE) {
 # Report and Correct for samples with zero reads after filter
 zeros <- row.names(out)[out[,2] == 0]
 write.table(zeros, paste0(work_dir,"/zeroReadSamples.txt"), sep = "\t", quote = FALSE)
+# An empty branch, or a single remaining pair, cannot support error learning.
+# Preserve its sample rows and record why no ASVs were inferred.
+if (sum(out[,2]) <= 1) {
+  warning("DADA2 branch has ", sum(out[,2]),
+          " filtered read pairs; returning no inferred ASVs because an error model cannot be learned.",
+          call. = FALSE)
+  seqtab <- matrix(integer(), nrow = length(sample.names), ncol = 0,
+                   dimnames = list(sample.names, character()))
+  write.table(data.frame(sample = sample.names), file = output_filename,
+              quote = FALSE, sep = "\t", row.names = FALSE)
+  track <- cbind(out, 0L, 0L, 0L, 0L)
+  colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
+  rownames(track) <- sample.names
+  capture.output(print(track), file = file.path(work_dir, "reads_summary.txt"))
+  write.table(data.frame(sample_id = sample.names, filtered_read_pairs = out[,2],
+                         status = ifelse(out[,2] == 0, "no_reads_after_filtering", "single_read_no_error_model")),
+              file = file.path(work_dir, "inference_status.tsv"),
+              quote = FALSE, sep = "\t", row.names = FALSE)
+  if (args$bimera) {
+    write.table(data.frame(sequence = character(), bimera = logical()),
+                file = file.path(work_dir, "ASVBimeras.txt"),
+                quote = FALSE, sep = "\t", row.names = FALSE)
+  }
+  if (!is.null(args$save_run) && nzchar(args$save_run)) {
+    save.image(file.path(work_dir, args$save_run))
+  }
+  quit(save = "no", status = 0)
+}
 filtFs <- filtFs[out[,2] != 0]
 filtRs <- filtRs[out[,2] != 0]
 sample.names <- sample.names[out[,2] != 0]
@@ -264,7 +292,7 @@ if (length(sample.names) == 0) {
 }
 
 # Update Out table
-out <- out[(out[,2] != 0),]
+out <- out[(out[,2] != 0), , drop = FALSE]
 
 #Compute the error model
 print("starting error model learning for forward reads...")
@@ -280,22 +308,31 @@ png(paste0(work_dir,"/errR.png"), height = 800, width = 700)
 try(print(plotErrors(errR, nominalQ=TRUE)), silent = TRUE)
 dev.off()
 
+# Keep one-sample objects in the same named-list structure as multi-sample results.
+sample_result_list <- function(result, sample_names) {
+  if (inherits(result, c("derep", "dada")) || is.data.frame(result)) {
+    result <- list(result)
+  }
+  if (!is.list(result) || length(result) != length(sample_names)) {
+    stop("DADA2 result count does not match the sample names.")
+  }
+  names(result) <- sample_names
+  result
+}
+
 #DeReplicate the reads
-derepFs <- derepFastq(filtFs, verbose = TRUE)
-derepRs <- derepFastq(filtRs, verbose = TRUE)
-# Name the derep-class objects by the sample names
-names(derepFs) <- sample.names
-names(derepRs) <- sample.names
+derepFs <- sample_result_list(derepFastq(filtFs, verbose = TRUE), sample.names)
+derepRs <- sample_result_list(derepFastq(filtRs, verbose = TRUE), sample.names)
 
 #Run core DADA2 algorithm
 print("starting dada2 for forward reads...")
-dadaFs <- dada(derepFs, err=errF, pool=pool, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a)
+dadaFs <- sample_result_list(dada(derepFs, err=errF, pool=pool, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a), sample.names)
 print("starting dada2 for reverse reads...")
-dadaRs <- dada(derepRs, err=errR, pool=pool, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a)
+dadaRs <- sample_result_list(dada(derepRs, err=errR, pool=pool, selfConsist=selfConsist, multithread=multithread, verbose=TRUE, OMEGA_A=omega_a), sample.names)
 
 # Merge reads
 print("merging paird ends...")
-mergers <- mergePairs(dadaFs, derepFs, dadaRs, derepRs, verbose=TRUE, justConcatenate=justConcatenate, trimOverhang = TRUE)
+mergers <- sample_result_list(mergePairs(dadaFs, derepFs, dadaRs, derepRs, verbose=TRUE, justConcatenate=justConcatenate, trimOverhang = TRUE), sample.names)
 
 #Generate sequence table
 print("generating sequence table...")
@@ -324,7 +361,6 @@ if(args$bimera) {
 # Track reads through the pipeline
 getN <- function(x) sum(getUniques(x))
 track <- cbind(out, sapply(dadaFs, getN), sapply(dadaRs, getN), sapply(mergers, getN), rowSums(seqtab.nochim))
-# If processing a single sample, remove the sapply calls: e.g. replace sapply(dadaFs, getN) with getN(dadaFs)
 colnames(track) <- c("input", "filtered", "denoisedF", "denoisedR", "merged", "nonchim")
 rownames(track) <- sample.names
 

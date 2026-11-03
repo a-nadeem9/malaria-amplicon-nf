@@ -169,24 +169,6 @@ def cmd_preflight(args: argparse.Namespace) -> int:
         if row.get("sample_type", "").lower() in {"negative", "ntc", "control_negative"}:
             rows.append(("INFO", sample_id, "Negative control marked in manifest"))
 
-    barcode_rows = [
-        row for row in sample_rows
-        if row.get("expected_fwd_barcode", "") or row.get("expected_rev_barcode", "")
-    ]
-    if args.inline_barcodes_enabled.lower() == "false":
-        pass
-    elif barcode_rows:
-        incomplete = [
-            row.get("sample_id", "") for row in sample_rows
-            if bool(row.get("expected_fwd_barcode", "")) != bool(row.get("expected_rev_barcode", ""))
-        ]
-        if incomplete:
-            rows.append(("ERROR", "inline_barcodes", "Incomplete barcode pairs: " + ",".join(incomplete[:20])))
-        else:
-            rows.append(("INFO", "inline_barcodes", f"Barcode columns populated for {len(barcode_rows)} samples"))
-    else:
-        rows.append(("WARN", "inline_barcodes", "No expected barcode pairs found; contamination module cannot run yet"))
-
     with open(args.geometry, "w", newline="") as out:
         writer = csv.writer(out, delimiter="\t")
         writer.writerow(["amplicon", "length_bp", "pe150_raw_overlap_bp", "recommended_handling"])
@@ -199,12 +181,6 @@ def cmd_preflight(args: argparse.Namespace) -> int:
             else:
                 handling = "concatenate"
             writer.writerow([name, length, overlap, handling])
-
-    with open(args.barcode, "w", newline="") as out:
-        writer = csv.writer(out, delimiter="\t")
-        writer.writerow(["status", "metric", "value"])
-        writer.writerow(["INFO", "samples_with_expected_barcode_pairs", len(barcode_rows)])
-        writer.writerow(["INFO", "sentinel_locus", args.sentinel_locus])
 
     if not any(status == "ERROR" for status, _, _ in rows):
         rows.insert(0, ("OK", "preflight", f"{len(sample_rows)} samples validated"))
@@ -1408,10 +1384,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--amplicons", required=True)
     p.add_argument("--report", required=True)
     p.add_argument("--geometry", required=True)
-    p.add_argument("--barcode", required=True)
     p.add_argument("--read-length", type=int, default=150)
-    p.add_argument("--inline-barcodes-enabled", default="false")
-    p.add_argument("--sentinel-locus", default="KELT")
     p.add_argument("--samples-root", default="")
     p.set_defaults(func=cmd_preflight)
 

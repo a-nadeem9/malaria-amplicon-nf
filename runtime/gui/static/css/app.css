@@ -661,13 +661,6 @@ summary::-webkit-details-marker {
   font-weight: 500;
 }
 
-.kelt-options > summary small {
-  margin-right: 20px;
-  color: var(--soft);
-  font-size: 10px;
-  font-weight: 400;
-  text-transform: uppercase;
-}
 
 .details-content {
   padding: 2px 0 3px;
@@ -2702,10 +2695,6 @@ pre,
   font-size: 11px;
 }
 
-.results-section-heading--kelt {
-  margin-top: 4px;
-  border-top: 1px solid var(--line-soft);
-}
 
 .results-section-heading--cdhit {
   margin-top: 4px;
@@ -2750,17 +2739,6 @@ pre,
   font-size: 10px;
 }
 
-.results-kelt-report {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-  margin: 0 20px 14px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--line-soft);
-  color: var(--muted);
-  font-size: 11px;
-}
 
 .results-empty {
   min-height: 118px;

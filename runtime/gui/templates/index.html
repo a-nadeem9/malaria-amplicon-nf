@@ -98,13 +98,13 @@
               <details class="metadata-options metadata-workspace">
                 <summary>
                   <span>
-                    <strong>Add visit metadata</strong>
+                    <strong>Add sample or visit metadata</strong>
                     <small>Recommended for longitudinal analysis</small>
                   </span>
                   <em>Optional</em>
                 </summary>
                 <div class="details-content">
-                  <p class="metadata-intro">Use CSV, TSV, or Excel to include visits with no retained genotype. The app will match familiar column names automatically.</p>
+                  <p class="metadata-intro">Use CSV, TSV, or Excel to match lab samples by sample ID or FASTQ filename, or longitudinal samples by participant and visit. The app will match familiar column names automatically.</p>
 
                   <div class="metadata-file-heading">
                     <label for="metadata-path">Metadata file</label>
@@ -115,7 +115,8 @@
                   </div>
                   <div class="metadata-file-footer">
                     <p id="metadata-path-help" class="field-help">Leave blank for a sequencing-only run.</p>
-                    <a class="metadata-template-link" href="/api/metadata/template" download>Download CSV template</a>
+                    <a class="metadata-template-link" href="/api/metadata/template?kind=lab" download>Lab CSV template</a>
+                    <a class="metadata-template-link" href="/api/metadata/template" download>Visit CSV template</a>
                   </div>
 
                   <details class="metadata-file-settings">
@@ -158,7 +159,11 @@
                       <div class="metadata-review-body">
                         <div class="metadata-contract__required">
                           <div class="metadata-map-field">
-                            <label for="metadata-column-participant">Participant ID <span>Required</span></label>
+                            <label for="metadata-column-sample">Sample ID or FASTQ filename</label>
+                            <select id="metadata-column-sample" data-metadata-column="sample_id"></select>
+                          </div>
+                          <div class="metadata-map-field">
+                            <label for="metadata-column-participant">Participant ID <span>Optional for lab samples</span></label>
                             <select id="metadata-column-participant" data-metadata-column="participant_id"></select>
                           </div>
                           <div class="metadata-map-field">
@@ -174,7 +179,7 @@
                             <select id="metadata-column-pcr" data-metadata-column="metadata_pcr"></select>
                           </div>
                         </div>
-                        <p class="metadata-contract__rule">Participant ID and either Visit date or Visit month are required. Detection results complete the visit calendar.</p>
+                        <p class="metadata-contract__rule">Lab samples need a sample ID or FASTQ filename. Longitudinal matching uses Participant ID and Visit date or Visit month. Detection results complete the visit calendar.</p>
 
                         <details class="metadata-covariates">
                           <summary>Optional study fields</summary>
@@ -239,23 +244,6 @@
                 </div>
               </details>
 
-              <details class="metadata-options kelt-options">
-                <summary>
-                  <span>KELT contamination QC</span>
-                  <small>SIMPLseq only</small>
-                </summary>
-                <div class="details-content">
-                  <p class="field-help metadata-options__intro">Use this only when PCR1 added well-specific inline barcodes to the KELT sentinel locus. Leave it blank for AMA1-only or other unbarcoded libraries.</p>
-
-                  <label for="kelt-barcode-map">Expected barcode map</label>
-                  <div class="input-row">
-                    <input id="kelt-barcode-map" type="text" placeholder="No KELT barcode map selected" autocomplete="off">
-                    <button id="choose-kelt-barcode-map" type="button" title="Choose the expected KELT barcode map">Choose file</button>
-                  </div>
-                  <p id="kelt-barcode-help" class="field-help">CSV or TSV with sample_id, forward_barcode, and reverse_barcode columns. Selecting a map enables exact barcode-pair matching.</p>
-                  <div id="kelt-barcode-inspection" class="metadata-inspection" hidden aria-live="polite"></div>
-                </div>
-              </details>
 
               <div class="section-action">
                 <span>Optional settings are saved with this run.</span>
@@ -569,7 +557,7 @@
                   <li>Merge confirmed counts and require 100 reads at the locus.</li>
                   <li>Keep haplotypes seen in two samples or major in one sample.</li>
                 </ol>
-                <p><strong>Controls stay in run QC only.</strong> Controls and rows without a participant or date are excluded.</p>
+                <p><strong>Controls stay in run QC only.</strong> Undated lab samples remain available for genotyping. Longitudinal analysis requires a participant and date.</p>
               </details>
             </div>
           </section>

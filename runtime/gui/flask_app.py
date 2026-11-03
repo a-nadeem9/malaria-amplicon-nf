@@ -48,7 +48,6 @@ from simplseq.metadata import (
     inspect_metadata,
     normalize_metadata_contract,
 )
-from simplseq.kelt import inspect_kelt_barcode_map
 from simplseq.panel import panel_profile
 from simplseq.samplesheet import (
     DEFAULT_COLLECTION_DAY,
@@ -74,8 +73,6 @@ CORE_RESULT_LABELS = {
     "ASV to CIGAR map",
     "CIGAR count table",
 }
-KELT_REPORT_LABEL = "KELT contamination report"
-KELT_TABLE_LABELS = {"KELT contamination calls", "KELT barcode counts"}
 CDHIT_TABLE_LABELS = {"CD-HIT cluster membership", "CD-HIT cluster count table"}
 CDHIT_RESULT_LABELS = CDHIT_TABLE_LABELS | {
     "CD-HIT representative FASTA",
@@ -116,13 +113,11 @@ def analysis_runtime_env(root: Path) -> dict[str, str]:
             env["PATH"] = os.pathsep.join([env_bin, *path_parts])
     return env
 REPORT_LABEL = "Run summary"
-VIEWABLE_REPORT_LABELS = {REPORT_LABEL, KELT_REPORT_LABEL, ASV_FILTERING_SUMMARY_LABEL}
-TABLE_RESULT_LABELS = (CORE_RESULT_LABELS - {ASV_FILTERING_SUMMARY_LABEL}) | KELT_TABLE_LABELS | CDHIT_TABLE_LABELS
-BUNDLE_RESULT_LABELS = CORE_RESULT_LABELS | KELT_TABLE_LABELS | CDHIT_RESULT_LABELS | {
+VIEWABLE_REPORT_LABELS = {REPORT_LABEL, ASV_FILTERING_SUMMARY_LABEL}
+TABLE_RESULT_LABELS = (CORE_RESULT_LABELS - {ASV_FILTERING_SUMMARY_LABEL}) | CDHIT_TABLE_LABELS
+BUNDLE_RESULT_LABELS = CORE_RESULT_LABELS | CDHIT_RESULT_LABELS | {
     REPORT_LABEL,
     ASV_FILTERING_SUMMARY_LABEL,
-    KELT_REPORT_LABEL,
-    "KELT contamination summary",
     "Input FASTQ MD5s",
 }
 
@@ -780,18 +775,17 @@ def sample_rows_preview(
             return "excluded"
         inferred = any(str(row.get(field, "")).lower() == "true" for field in ("inferred_year", "inferred_day"))
         ambiguous = str(row.get("metadata_match_status", "")).lower() == "ambiguous"
-        missing_date = not str(row.get("collection_date", "")).strip()
-        return "review" if inferred or ambiguous or missing_date else "ready"
+        return "review" if inferred or ambiguous else "ready"
 
     def review_reason(row: dict[str, str]) -> str:
         status = review_status(row)
         sample_type = str(row.get("sample_type", "sample")).strip().lower()
         if status == "excluded":
             return f"{sample_type.title()} control" if sample_type in {"negative", "positive"} else "Control"
-        if not str(row.get("collection_date", "")).strip():
-            return "Collection date missing"
         if str(row.get("metadata_match_status", "")).lower() == "ambiguous":
             return "Multiple metadata rows"
+        if not str(row.get("collection_date", "")).strip():
+            return "Sample-level analysis; no visit date provided"
         inferred_year = str(row.get("inferred_year", "")).lower() == "true"
         inferred_day = str(row.get("inferred_day", "")).lower() == "true"
         if inferred_year and inferred_day:
@@ -1201,11 +1195,7 @@ def select_windows_file_dialog(
     if initial:
         env["SIMPLSEQ_PICKER_INITIAL"] = wsl_to_windows_path(initial) if convert_to_wsl else str(initial)
     env["SIMPLSEQ_PICKER_PROMPT"] = prompt
-    env["SIMPLSEQ_PICKER_FILTER"] = (
-        "KELT barcode maps (*.csv;*.tsv)|*.csv;*.tsv|All files (*.*)|*.*"
-        if kind == "kelt"
-        else "Metadata files (*.csv;*.tsv;*.xlsx;*.xlsm)|*.csv;*.tsv;*.xlsx;*.xlsm|All files (*.*)|*.*"
-    )
+    env["SIMPLSEQ_PICKER_FILTER"] = "Metadata files (*.csv;*.tsv;*.xlsx;*.xlsm)|*.csv;*.tsv;*.xlsx;*.xlsm|All files (*.*)|*.*"
     script = r"""
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -1384,8 +1374,8 @@ def select_linux_file_dialog(
     kind: str = "metadata",
 ) -> dict[str, Any]:
     initial_path = str(initial) if initial and safe_exists(initial) else str(Path.home())
-    filter_label = "KELT barcode maps" if kind == "kelt" else "Metadata files"
-    filter_glob = "*.csv *.tsv" if kind == "kelt" else "*.csv *.tsv *.xlsx *.xlsm"
+    filter_label = "Metadata files"
+    filter_glob = "*.csv *.tsv *.xlsx *.xlsm"
     if shutil.which("zenity"):
         command = [
             "zenity", "--file-selection", f"--title={prompt}", f"--filename={initial_path}",
@@ -1655,8 +1645,6 @@ def result_files_with_downloads(root: Path, outdir: Path) -> dict[str, Any]:
     manifest["files"] = files
     manifest["report"] = next((item for item in files if item["label"] == REPORT_LABEL), None)
     manifest["core_files"] = [item for item in files if item["label"] in CORE_RESULT_LABELS]
-    manifest["kelt_report"] = next((item for item in files if item["label"] == KELT_REPORT_LABEL), None)
-    manifest["kelt_files"] = [item for item in files if item["label"] in KELT_TABLE_LABELS]
     manifest["cdhit_files"] = [item for item in files if item["label"] in CDHIT_TABLE_LABELS]
     manifest["cdhit_summary"] = read_json(outdir / "cdhit" / "cdhit_summary.json")
     manifest["panel"] = result_panel_profile(outdir)
@@ -1939,9 +1927,6 @@ def headless_run_command(
         command.append("--no-resume")
     if bool_payload(data, "dry_run", False):
         command.append("--dry-run")
-    kelt_barcode_map = str(data.get("kelt_barcode_map", "") or "").strip()
-    if kelt_barcode_map:
-        command.extend(["--kelt", "--kelt-barcode-map", kelt_barcode_map])
     if worker_token and worker_state is not None:
         command.extend(["--worker-token", worker_token, "--worker-state", str(worker_state)])
     return command
@@ -2125,21 +2110,9 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
         initial = resolve_app_path(workspace, initial_raw, workspace) if initial_raw else workspace
         prompt = str(data.get("prompt") or "Select metadata file")
         kind = str(data.get("kind") or "metadata").strip().lower()
-        if kind not in {"metadata", "kelt"}:
+        if kind != "metadata":
             return json_error("Unsupported file picker type.", 400)
         return jsonify(select_file_dialog(initial, prompt=prompt, kind=kind))
-
-    @app.post("/api/kelt/inspect")
-    def api_kelt_inspect():
-        data = request.get_json(silent=True) or {}
-        path_raw = str(data.get("path", "") or "").strip()
-        if not path_raw:
-            return json_error("Choose a KELT barcode map first.", 400)
-        path = resolve_app_path(workspace, path_raw, path_raw)
-        try:
-            return jsonify({"ok": True, **inspect_kelt_barcode_map(path)})
-        except (OSError, ValueError) as exc:
-            return json_error(str(exc), 400)
 
     @app.post("/api/metadata/inspect")
     def api_metadata_inspect():
@@ -2175,15 +2148,18 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
 
     @app.get("/api/metadata/template")
     def api_metadata_template():
+        lab = request.args.get("kind") == "lab"
         header = (
             "participant_id,visit_date,visit_month,pcr_result,season,"
             "visit_status,age,sex\r\n"
         )
+        if lab:
+            header = "sample_id\r\n"
         return send_file(
             BytesIO(header.encode("utf-8")),
             mimetype="text/csv",
             as_attachment=True,
-            download_name="simplseq_metadata_template.csv",
+            download_name="simplseq_lab_metadata_template.csv" if lab else "simplseq_metadata_template.csv",
         )
 
     @app.post("/api/scan")
@@ -2341,12 +2317,6 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
             metadata_sheet = str(data.get("metadata_sheet", "") or "").strip()
             metadata_date_order = str(data.get("metadata_date_order", "auto") or "auto").lower()
             metadata_contract = normalize_metadata_contract(data.get("metadata_contract", {}))
-            kelt_barcode_raw = str(data.get("kelt_barcode_map", "") or "").strip()
-            kelt_barcode_map = (
-                resolve_app_path(workspace, kelt_barcode_raw, kelt_barcode_raw)
-                if kelt_barcode_raw
-                else None
-            )
             include_pool = bool_payload(data, "include_pool_in_sample_id", False)
             absolute = bool_payload(data, "absolute_paths", True)
             try:
@@ -2355,8 +2325,6 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
                 return json_error(str(exc), 400)
             if metadata_path is not None and not metadata_path.exists():
                 return json_error(f"Metadata file not found: {metadata_path}", 400, outdir=str(outdir))
-            if kelt_barcode_map is not None and not kelt_barcode_map.exists():
-                return json_error(f"KELT barcode map not found: {kelt_barcode_map}", 400, outdir=str(outdir))
             if not fallback_year and metadata_path is not None:
                 try:
                     fallback_year = infer_metadata_year(
@@ -2387,7 +2355,6 @@ def create_app(root: Path | None = None, workspace_root: Path | None = None) -> 
                     metadata_sheet=metadata_sheet,
                     metadata_date_order=metadata_date_order,
                     metadata_columns=metadata_contract["columns"],
-                    kelt_barcode_map=kelt_barcode_map,
                     libraries=selected_libraries,
                 )
             except (OSError, RuntimeError, ValueError) as exc:

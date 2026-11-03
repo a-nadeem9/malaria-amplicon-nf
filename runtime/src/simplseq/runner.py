@@ -280,8 +280,6 @@ def analysis_parameters(profile: str = "local") -> dict[str, object]:
         "cigar_exclude_bimeras": True,
         "cdhit_identity": 0.989,
         "cdhit_word_size": 10,
-        "inline_barcodes_enabled": False,
-        "sentinel_locus": "KELT",
     }
     if profile == "reproducible":
         parameters.update(
@@ -304,8 +302,6 @@ def run_nextflow(
     dry_run: bool = False,
     cpus: int | None = None,
     memory: str | None = None,
-    kelt_enabled: bool = False,
-    kelt_barcode_map: Path | None = None,
 ) -> RunResult:
     root = (root or project_root()).resolve()
     samples = user_path(samples).resolve()
@@ -331,7 +327,6 @@ def run_nextflow(
         raise ValueError("malaria-amplicon-nf currently supports local Conda/Nextflow profiles only")
 
     pinned_parameters = analysis_parameters(profile)
-    pinned_parameters["inline_barcodes_enabled"] = bool(kelt_enabled)
     parameters = {
         "samples": str(samples),
         "outdir": str(outdir),
@@ -346,8 +341,6 @@ def run_nextflow(
         "cigar_min_total_reads": 1,
         "cigar_min_samples": 1,
         "cigar_exclude_bimeras": True,
-        "kelt_enabled": bool(kelt_enabled),
-        "kelt_barcode_map": str(kelt_barcode_map) if kelt_barcode_map else "",
         "analysis_parameters": pinned_parameters,
         "pinned_parameter_keys": PINNED_PARAMETER_KEYS,
     }
@@ -382,8 +375,6 @@ def run_nextflow(
         "--project_name",
         "SIMPLseq",
     ]
-    if kelt_enabled:
-        command.extend(["--inline_barcodes_enabled", "true"])
     if cpus:
         dada2_cpus = max(1, int(cpus))
         postprocess_cpus = max(1, int(cpus))
@@ -396,8 +387,6 @@ def run_nextflow(
                 str(postprocess_cpus),
                 "--cigar_cpus",
                 str(cigar_cpus),
-                "--kelt_cpus",
-                str(min(4, max(1, int(cpus)))),
             ]
         )
     if memory:
@@ -548,10 +537,6 @@ def results_manifest(outdir: Path) -> dict[str, object]:
         ("CD-HIT filtered ASV FASTA", outdir / "cdhit" / "filtered_ASVSeqs.fasta"),
         ("CD-HIT raw clusters", outdir / "cdhit" / "cdhit_representatives.fasta.clstr"),
         ("CD-HIT cluster summary", outdir / "cdhit" / "cdhit_summary.json"),
-        ("KELT contamination report", outdir / "qc" / "kelt" / "kelt_contamination_report.html"),
-        ("KELT contamination calls", outdir / "qc" / "kelt" / "kelt_contamination_calls.tsv"),
-        ("KELT barcode counts", outdir / "qc" / "kelt" / "kelt_barcode_counts.tsv"),
-        ("KELT contamination summary", outdir / "qc" / "kelt" / "kelt_contamination_summary.json"),
         ("Progress events", outdir / "progress.jsonl"),
         ("Run state", outdir / "run_state.json"),
         ("Provenance", outdir / "provenance.json"),

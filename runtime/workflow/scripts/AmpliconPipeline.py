@@ -98,7 +98,32 @@ def trim_primer(sampleid,fileF,fileR,pr1,pr2,prefix,keep_untrim=False):
 		sys.exit('Pre-process halted : one or both of the fastq files not found! Exiting..')
 	return()
 
-def merge_seqtab(path_op,path_nop):
+def read_zero_read_samples(seqtab_path, suffix, expected_sample_ids):
+	report = os.path.join(os.path.dirname(seqtab_path), "zeroReadSamples.txt")
+	if not os.path.isfile(report):
+		raise ValueError(f"Cannot explain missing sample rows: zero-read report not found: {report}")
+	zero_ids = set()
+	with open(report, newline="", encoding="utf-8") as handle:
+		reader = csv.reader(handle, delimiter="\t")
+		next(reader, None)
+		for row in reader:
+			if not row:
+				continue
+			filename = os.path.basename(row[-1].strip())
+			if not filename.endswith(suffix):
+				raise ValueError(f"Unexpected FASTQ name in zero-read report {report}: {filename}")
+			zero_ids.add(filename[:-len(suffix)])
+	unknown = zero_ids - expected_sample_ids
+	if unknown:
+		raise ValueError("Zero-read report contains sample IDs absent from the input manifest: " + ", ".join(sorted(unknown)))
+	return zero_ids
+
+def merge_seqtab(path_op,path_nop,expected_sample_ids):
+	expected_sample_ids = [str(sample_id) for sample_id in expected_sample_ids]
+	if not expected_sample_ids or any(not sample_id for sample_id in expected_sample_ids):
+		raise ValueError("Input manifest sample IDs must be non-empty")
+	if len(expected_sample_ids) != len(set(expected_sample_ids)):
+		raise ValueError("Input manifest sample IDs must be unique")
 	if os.path.isfile(path_op) and os.path.isfile(path_nop):
 		seqtab_op = read_seqtab(path_op)
 		seqtab_nop = read_seqtab(path_nop)
@@ -107,26 +132,58 @@ def merge_seqtab(path_op,path_nop):
 	else:
 		sys.exit('iseq overlapping and/or non-overlapping dada2 tables not found! Exiting..')
 
-	return(seqtab)
+	expected = set(expected_sample_ids)
+	unexpected = set(seqtab.index) - expected
+	if unexpected:
+		raise ValueError("DADA2 tables contain sample IDs absent from the input manifest: " + ", ".join(sorted(unexpected)))
+	missing = expected - set(seqtab.index)
+	if missing:
+		op_zero = read_zero_read_samples(path_op, "_iseq_op_1.fq.gz", expected)
+		nop_zero = read_zero_read_samples(path_nop, "_iseq_nop_1.fq.gz", expected)
+		unexplained = missing - (op_zero & nop_zero)
+		if unexplained:
+			raise ValueError("Samples absent from both DADA2 tables without zero-read records in both branches: " + ", ".join(sorted(unexplained)))
+		print(f"Restoring {len(missing)} documented zero-read sample row(s): " + ", ".join(sorted(missing)))
+	# An outer join fills cells for IDs present in either branch. It cannot
+	# restore an ID absent from both; only the verified zero-read IDs may be added.
+	return seqtab.reindex(expected_sample_ids, fill_value=0)
+
+def write_sample_read_qc(seqtab, output):
+	totals = seqtab.sum(axis=1).astype(int)
+	pandas.DataFrame({
+		"sample_id": seqtab.index,
+		"asv_read_pairs": totals.to_numpy(),
+		"status": ["reads_retained" if total > 0 else "no_reads_retained" for total in totals],
+	}).to_csv(output, sep="\t", index=False)
 
 def read_seqtab(path_to_seqtab):
-	seqtab = pandas.read_csv(path_to_seqtab, sep = "\t")
-	if seqtab.empty:
+	# Read IDs as text so 0007 and 7 remain distinct when matched to the manifest.
+	seqtab = pandas.read_csv(path_to_seqtab, sep = "\t", index_col=0, dtype=str, keep_default_na=False)
+	# An empty branch can still carry sample rows while the other has ASVs.
+	if len(seqtab.index) == 0:
 		sys.exit('DADA2 sequence table is empty: %s' % path_to_seqtab)
-	if str(seqtab.columns[0]).startswith("Unnamed:"):
-		seqtab = seqtab.rename(columns={seqtab.columns[0]:"sample"})
-	elif not seqtab.iloc[:, 0].astype(str).str.startswith(("Toro", "Ctrl")).any():
-		seqtab = pandas.read_csv(path_to_seqtab, sep = "\t", index_col=0)
-		if seqtab.index.has_duplicates:
-			dupes = ", ".join(seqtab.index[seqtab.index.duplicated()].astype(str).unique())
-			sys.exit('Duplicate sample IDs found in %s: %s' % (path_to_seqtab, dupes))
-		return(seqtab.apply(pandas.to_numeric, errors="coerce").fillna(0))
-	seqtab = seqtab.rename(columns={seqtab.columns[0]:"sample"})
-	if seqtab["sample"].duplicated().any():
-		dupes = ", ".join(seqtab.loc[seqtab["sample"].duplicated(), "sample"].astype(str).unique())
+	if seqtab.index.has_duplicates:
+		dupes = ", ".join(seqtab.index[seqtab.index.duplicated()].unique())
 		sys.exit('Duplicate sample IDs found in %s: %s' % (path_to_seqtab, dupes))
-	seqtab = seqtab.set_index("sample")
 	return(seqtab.apply(pandas.to_numeric, errors="coerce").fillna(0))
+
+def correct_nop_asvs(seqtab_path, reference, script_dir):
+	if reference is None:
+		print('--reference not given. Skipping ASV correction..')
+		return seqtab_path
+	if not os.path.isfile(reference):
+		print('--reference file not found. skipping ASV correction..')
+		return seqtab_path
+	if len(read_seqtab(seqtab_path).columns) == 0:
+		print('No non-overlapping ASVs to correct; keeping the sample rows.')
+		with open(os.path.join(os.path.dirname(seqtab_path), 'correctedASV.txt'), 'w', newline='') as handle:
+			csv.writer(handle, delimiter='\t').writerow(['target', 'ASV', 'correctedASV', 'overlap'])
+		return seqtab_path
+	print('--reference given %s' % reference)
+	output_dir = os.path.dirname(seqtab_path)
+	run_subprocess(['Rscript', os.path.join(script_dir, 'adjustASV.R'), '-s', str(seqtab_path),
+		'-ref', str(reference), '-o', os.path.join(output_dir, 'correctedASV.txt')], 'ASV correction')
+	return os.path.join(output_dir, 'seqtab_corrected.tsv')
 
 def main():
 	global run_dir
@@ -194,6 +251,8 @@ def main():
 		sys.stderr = Tee(sys.__stderr__, stderr_log)
 	else:
 		sys.exit('Execution halted : Metafile with sample list not found! Exiting..')
+	with open(path_to_meta, 'r', encoding='utf-8') as meta:
+		input_sample_ids = [job[0] for job in sample_jobs(meta.readlines())]
 
 #### Adapter removal steps ####
 
@@ -461,23 +520,12 @@ def main():
 
 			# ASV modification block for non-op targets
 			seqtab_nop = os.path.join(run_dir,'run_dada2','dada2_nop','seqtab_nop.tsv')
-			if args.reference is not None:
-				print('--reference given %s' % (str(args.reference)))
-				if os.path.isfile(args.reference):
-					adjASV = ['Rscript', os.path.join(path, 'adjustASV.R'), '-s', seqtab_nop, '-ref', str(args.reference),
-					'-o', os.path.join(run_dir,'run_dada2','dada2_nop','correctedASV.txt')]
-					run_subprocess(adjASV, "ASV correction")
-					seqtab_corrected = os.path.join(run_dir,'run_dada2','dada2_nop','seqtab_corrected.tsv')
-					seqtab = merge_seqtab(seqtab_op,seqtab_corrected)
-				else:
-					print('--reference file not found. skipping ASV correction..')
-					seqtab = merge_seqtab(seqtab_op,seqtab_nop)
-			else:
-				print('--reference not given. Skipping ASV correction..')
-				seqtab = merge_seqtab(seqtab_op,seqtab_nop)
+			seqtab_nop = correct_nop_asvs(seqtab_nop, args.reference, path)
+			seqtab = merge_seqtab(seqtab_op,seqtab_nop,input_sample_ids)
 
 			# Merge two ASV tables
 			seqtab.to_csv(os.path.join(run_dir,'run_dada2','seqtab_iseq.tsv'), sep = "\t", index_label="sample")
+			write_sample_read_qc(seqtab, os.path.join(run_dir,'run_dada2','sample_read_qc.tsv'))
 
 		## Check for demux by amplicon option
 		elif args.demux_by_amp:
